@@ -1,0 +1,86 @@
+{
+  "generatedAt": "2026-07-25T13:45:41.150Z",
+  "fonts": [
+    {
+      "name": "4x6",
+      "u8g2": "u8g2_font_4x6_t_cyrillic",
+      "file": "4x6.json",
+      "cellWidth": 4,
+      "cellHeight": 6,
+      "lineHeight": 6,
+      "glyphs": 191
+    },
+    {
+      "name": "5x7",
+      "u8g2": "u8g2_font_5x7_t_cyrillic",
+      "file": "5x7.json",
+      "cellWidth": 5,
+      "cellHeight": 7,
+      "lineHeight": 7,
+      "glyphs": 211
+    },
+    {
+      "name": "5x8",
+      "u8g2": "u8g2_font_5x8_t_cyrillic",
+      "file": "5x8.json",
+      "cellWidth": 5,
+      "cellHeight": 8,
+      "lineHeight": 8,
+      "glyphs": 213
+    },
+    {
+      "name": "6x12",
+      "u8g2": "u8g2_font_6x12_t_cyrillic",
+      "file": "6x12.json",
+      "cellWidth": 6,
+      "cellHeight": 12,
+      "lineHeight": 12,
+      "glyphs": 387
+    },
+    {
+      "name": "6x13",
+      "u8g2": "u8g2_font_6x13_t_cyrillic",
+      "file": "6x13.json",
+      "cellWidth": 6,
+      "cellHeight": 13,
+      "lineHeight": 13,
+      "glyphs": 357
+    },
+    {
+      "name": "7x13",
+      "u8g2": "u8g2_font_7x13_t_cyrillic",
+      "file": "7x13.json",
+      "cellWidth": 7,
+      "cellHeight": 13,
+      "lineHeight": 13,
+      "glyphs": 333
+    },
+    {
+      "name": "8x13",
+      "u8g2": "u8g2_font_8x13_t_cyrillic",
+      "file": "8x13.json",
+      "cellWidth": 8,
+      "cellHeight": 13,
+      "lineHeight": 13,
+      "glyphs": 357
+    },
+    {
+      "name": "9x15",
+      "u8g2": "u8g2_font_9x15_t_cyrillic",
+      "file": "9x15.json",
+      "cellWidth": 9,
+      "cellHeight": 15,
+      "lineHeight": 15,
+      "glyphs": 357
+    },
+    {
+      "name": "10x20",
+      "u8g2": "u8g2_font_10x20_t_cyrillic",
+      "file": "10x20.json",
+      "cellWidth": 10,
+      "cellHeight": 20,
+      "lineHeight": 20,
+      "glyphs": 387
+    }
+  ]
+}

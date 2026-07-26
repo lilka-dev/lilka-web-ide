@@ -1,0 +1,325 @@
+{
+  "generatedAt": "2026-07-25T19:39:43.647Z",
+  "totals": {
+    "functions": 174,
+    "implemented": 80,
+    "stubs": 7,
+    "inScopeFunctions": 108,
+    "inScopeImplemented": 80
+  },
+  "namespaces": [
+    {
+      "name": "buzzer",
+      "total": 3,
+      "done": 3,
+      "stub": 0,
+      "missing": []
+    },
+    {
+      "name": "controller",
+      "total": 1,
+      "done": 1,
+      "stub": 0,
+      "missing": []
+    },
+    {
+      "name": "display",
+      "total": 23,
+      "done": 23,
+      "stub": 0,
+      "missing": []
+    },
+    {
+      "name": "geometry",
+      "total": 2,
+      "done": 2,
+      "stub": 0,
+      "missing": []
+    },
+    {
+      "name": "math",
+      "total": 29,
+      "done": 29,
+      "stub": 0,
+      "missing": []
+    },
+    {
+      "name": "Transform",
+      "total": 7,
+      "done": 7,
+      "stub": 0,
+      "missing": []
+    },
+    {
+      "name": "transforms",
+      "total": 1,
+      "done": 1,
+      "stub": 0,
+      "missing": []
+    },
+    {
+      "name": "util",
+      "total": 5,
+      "done": 5,
+      "stub": 0,
+      "missing": []
+    },
+    {
+      "name": "audio",
+      "total": 7,
+      "done": 6,
+      "stub": 1,
+      "missing": []
+    },
+    {
+      "name": "resources",
+      "total": 6,
+      "done": 3,
+      "stub": 3,
+      "missing": []
+    },
+    {
+      "name": "alertUI",
+      "total": 7,
+      "done": 0,
+      "stub": 0,
+      "missing": [
+        "addActivationButton",
+        "draw",
+        "getButton",
+        "isFinished",
+        "setMessage",
+        "setTitle",
+        "update"
+      ]
+    },
+    {
+      "name": "crypto",
+      "total": 4,
+      "done": 0,
+      "stub": 0,
+      "missing": [
+        "crc32",
+        "decrypt",
+        "encrypt",
+        "md5"
+      ],
+      "note": "не пріоритет"
+    },
+    {
+      "name": "File",
+      "total": 5,
+      "done": 0,
+      "stub": 0,
+      "missing": [
+        "exists",
+        "read",
+        "seek",
+        "size",
+        "write"
+      ]
+    },
+    {
+      "name": "gpio",
+      "total": 4,
+      "done": 0,
+      "stub": 0,
+      "missing": [
+        "analog_read",
+        "read",
+        "set_mode",
+        "write"
+      ],
+      "note": "фізичні виводи"
+    },
+    {
+      "name": "http",
+      "total": 1,
+      "done": 0,
+      "stub": 0,
+      "missing": [
+        "execute"
+      ],
+      "note": "мережа пристрою"
+    },
+    {
+      "name": "httpserver",
+      "total": 4,
+      "done": 0,
+      "stub": 0,
+      "missing": [
+        "accept",
+        "close",
+        "listen",
+        "respond"
+      ],
+      "note": "мережа пристрою"
+    },
+    {
+      "name": "i2c",
+      "total": 6,
+      "done": 0,
+      "stub": 0,
+      "missing": [
+        "begin",
+        "read",
+        "scan",
+        "set_clock",
+        "write",
+        "write_read"
+      ],
+      "note": "фізична шина"
+    },
+    {
+      "name": "keyboardUI",
+      "total": 6,
+      "done": 0,
+      "stub": 0,
+      "missing": [
+        "draw",
+        "getValue",
+        "isFinished",
+        "setMasked",
+        "setValue",
+        "update"
+      ]
+    },
+    {
+      "name": "mqtt",
+      "total": 7,
+      "done": 0,
+      "stub": 0,
+      "missing": [
+        "connect",
+        "connected",
+        "disconnect",
+        "publish",
+        "receive",
+        "subscribe",
+        "unsubscribe"
+      ],
+      "note": "мережа пристрою"
+    },
+    {
+      "name": "net",
+      "total": 7,
+      "done": 0,
+      "stub": 0,
+      "missing": [
+        "accept",
+        "close",
+        "connect",
+        "listen",
+        "receive",
+        "send",
+        "settimeout"
+      ],
+      "note": "мережа пристрою"
+    },
+    {
+      "name": "progressUI",
+      "total": 3,
+      "done": 0,
+      "stub": 0,
+      "missing": [
+        "draw",
+        "setMessage",
+        "setProgress"
+      ]
+    },
+    {
+      "name": "pwm",
+      "total": 6,
+      "done": 0,
+      "stub": 0,
+      "missing": [
+        "attach_pin",
+        "detach_pin",
+        "read",
+        "setup",
+        "write",
+        "write_tone"
+      ],
+      "note": "фізичні виводи"
+    },
+    {
+      "name": "sdcard",
+      "total": 4,
+      "done": 0,
+      "stub": 0,
+      "missing": [
+        "ls",
+        "open",
+        "remove",
+        "rename"
+      ],
+      "note": "файлова система"
+    },
+    {
+      "name": "serial",
+      "total": 10,
+      "done": 0,
+      "stub": 0,
+      "missing": [
+        "available",
+        "begin",
+        "flush",
+        "peek",
+        "print",
+        "println",
+        "read",
+        "setTimeout",
+        "stop",
+        "write"
+      ],
+      "note": "апаратний UART"
+    },
+    {
+      "name": "spi",
+      "total": 3,
+      "done": 0,
+      "stub": 0,
+      "missing": [
+        "begin",
+        "close",
+        "transfer"
+      ],
+      "note": "фізична шина"
+    },
+    {
+      "name": "state",
+      "total": 3,
+      "done": 0,
+      "stub": 3,
+      "missing": []
+    },
+    {
+      "name": "wifi",
+      "total": 9,
+      "done": 0,
+      "stub": 0,
+      "missing": [
+        "connect",
+        "disconnect",
+        "get_encryption_type",
+        "get_local_ip",
+        "get_mac",
+        "get_rssi",
+        "get_status",
+        "scan",
+        "set_config"
+      ],
+      "note": "мережа пристрою"
+    },
+    {
+      "name": "ws2812",
+      "total": 1,
+      "done": 0,
+      "stub": 0,
+      "missing": [
+        "write"
+      ],
+      "note": "фізична стрічка"
+    }
+  ]
+}

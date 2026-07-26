@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="uk">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+        <title>Лілка · web IDE</title>
+        <!--
+            coi-serviceworker підставляє COOP/COEP, яких GitHub Pages віддати не може.
+            Мусить бути окремим файлом з власного origin і НЕ в бандлі — тому лежить
+            у public/ і підключений звичайним тегом, а не через import.
+            На першому візиті сторінка один раз перезавантажиться.
+        -->
+        <script src="./coi-serviceworker.js"></script>
+    </head>
+    <body>
+        <div id="app"></div>
+        <noscript>Для роботи середовища потрібен JavaScript.</noscript>
+        <script type="module" src="/src/main.ts"></script>
+    </body>
+</html>

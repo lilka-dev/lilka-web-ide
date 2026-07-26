@@ -1,0 +1,459 @@
+/*
+ * Світла тема.
+ *
+ * Кольори взяті з самої Лілки, а не з абстрактної палітри: бірюза — з тримача
+ * дисплея, зелений — з кнопок надрукованого корпусу, кремовий — із самого
+ * корпусу. Так середовище впізнається як «те саме, що в руках».
+ */
+
+:root {
+    --page: #f2f7f4;
+    --card: #fbfdfc;
+    --edge: #d5e3dc;
+    --ink: #16302a;
+    --muted: #5c7a6e;
+
+    /* Бірюза не вигадана — це колір тримача дисплея на платі. */
+    --teal: #0e7c86;
+    --teal-deep: #0a5f67;
+    /* Бурштин — теплий контрапункт до бірюзи, лише на кнопках дій. */
+    --amber: #f0a500;
+    --amber-deep: #c98600;
+    --amber-ink: #3d2a00;
+
+    --case: #fbfdfc;
+    --case-edge: #d5e3dc;
+    --pill: #dce7e2;
+    --pill-edge: #c3d4cc;
+    --pill-ink: #3f5a50;
+    --pill-down: #c3d4cc;
+    --pill-down-edge: #a9beb5;
+    --silk: #8aa79a;
+
+    color-scheme: light;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    height: 100%;
+}
+
+body {
+    background: var(--page);
+    color: var(--ink);
+    font: 14px/1.45 ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+}
+
+/*
+ * Дві колонки: ліворуч пристрій, праворуч код. Пристрій компактний — органи
+ * керування під екраном, — тому колонка вузька і місця під код лишається
+ * більше.
+ */
+#app {
+    min-height: 100%;
+    display: grid;
+    /*
+     * Колонка пристрою росте до 620 px — рівно стільки треба, щоб екран
+     * помістився в масштабі 2x (560 px). Проміжних значень немає: дробовий
+     * масштаб розмиває піксель-арт, тож ширина або під 1x, або під 2x.
+     */
+    grid-template-columns: minmax(300px, 620px) minmax(360px, 1fr);
+    align-content: start;
+    gap: 16px;
+    padding: 16px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.column {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+}
+
+@media (max-width: 880px) {
+    #app {
+        grid-template-columns: 1fr;
+        padding: 10px;
+    }
+}
+
+/* ------------------------------------------------------------- пристрій */
+
+.device {
+    background: var(--case);
+    border: 1px solid var(--case-edge);
+    border-radius: 24px;
+    padding: 16px 18px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    align-items: center;
+}
+
+/* Екран лежить прямо на корпусі — жодної рамки навколо. */
+.device__screen {
+    display: grid;
+    place-items: center;
+}
+
+/*
+ * Без pixelated браузер згладить піксель-арт і віртуальний екран перестане
+ * відповідати реальному. Масштаб — лише цілий, з тієї самої причини.
+ */
+.lilka-screen {
+    display: block;
+    image-rendering: pixelated;
+    background: #000;
+    border-radius: 3px;
+}
+
+/*
+ * Три блоки: хрестовина ліворуч, службові пігулки посередині, дії праворуч.
+ * Корпус ширший за екран — інакше пігулкам не лишається місця. Це не
+ * компроміс: на справжній платі корпус теж помітно ширший за дисплей.
+ */
+.device__controls {
+    width: 100%;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 8px;
+}
+
+/*
+ * Комірка сітки (35px) МЕНША за кнопку (38px), тож сусідні кнопки заходять
+ * одна на одну на 3px. Завдяки цьому ромб читається як один орган керування,
+ * а не як чотири окремі кнопки.
+ */
+.pad {
+    display: grid;
+    grid-template-columns: repeat(3, 35px);
+    grid-template-rows: repeat(3, 35px);
+    place-items: center;
+}
+
+.key {
+    appearance: none;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    padding: 0;
+    border: none;
+    cursor: pointer;
+}
+
+.key--round {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    font-size: 13px;
+    background: var(--teal);
+}
+
+.key--action {
+    background: var(--amber);
+    color: var(--amber-ink);
+    font-size: 14px;
+}
+
+/*
+ * Натиснута кнопка темнішає у ВЛАСНОМУ кольорі, а не спалахує спільним
+ * жовтим: інакше бурштинові дії мигтіли б при кожному натисканні.
+ */
+.key--round.key--pressed {
+    background: var(--teal-deep);
+}
+
+.key--action.key--pressed {
+    background: var(--amber-deep);
+}
+
+.key--up {
+    grid-area: 1 / 2;
+}
+.key--left {
+    grid-area: 2 / 1;
+}
+.key--right {
+    grid-area: 2 / 3;
+}
+.key--down {
+    grid-area: 3 / 2;
+}
+
+/* на платі: C зверху, D ліворуч, A праворуч, B знизу */
+.key--c {
+    grid-area: 1 / 2;
+}
+.key--d {
+    grid-area: 2 / 1;
+}
+.key--a {
+    grid-area: 2 / 3;
+}
+.key--b {
+    grid-area: 3 / 2;
+}
+
+.device__system {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+/* 38px — те, що натискають постійно; 28px — те, що зрідка. */
+.key--pill {
+    min-width: 74px;
+    height: 28px;
+    border-radius: 14px;
+    background: var(--pill);
+    border: 0.5px solid var(--pill-edge);
+    color: var(--pill-ink);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+}
+
+.key--pill.key--pressed {
+    background: var(--pill-down);
+    border-color: var(--pill-down-edge);
+    color: #2c4a40;
+}
+
+.device__silk {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--silk);
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.device__motto {
+    flex: 1;
+    text-align: center;
+    text-transform: none;
+    letter-spacing: 0;
+    color: #9cb3a8;
+}
+
+.device__logo {
+    padding: 2px 9px;
+    border-radius: 4px;
+    background: var(--page);
+    border: 0.5px solid var(--edge);
+    color: #2c4a40;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+}
+
+.hud {
+    color: var(--muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    min-height: 1.4em;
+}
+
+/* -------------------------------------------------------------- редактор */
+
+.editor {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+}
+
+/* Три мови — три вкладки, як у CodeBug */
+.tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--edge);
+}
+
+.tab {
+    appearance: none;
+    font: inherit;
+    font-weight: 600;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    padding: 9px 16px;
+    cursor: pointer;
+    margin-bottom: -1px;
+}
+
+.tab:hover:not(.tab--active):not(:disabled) {
+    color: var(--ink);
+}
+
+.tab--active {
+    color: var(--ink);
+    background: var(--card);
+    border-color: var(--edge);
+}
+
+.tab:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.tab__soon {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: #eef1ef;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.editor__bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.button {
+    appearance: none;
+    font: inherit;
+    font-weight: 600;
+    color: var(--ink);
+    background: var(--card);
+    border: 1px solid var(--edge);
+    border-radius: 8px;
+    padding: 8px 14px;
+    min-height: 40px;
+    cursor: pointer;
+}
+
+.button:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.button--primary:not(:disabled) {
+    background: var(--teal);
+    border-color: var(--teal-deep);
+    color: #fff;
+}
+
+.editor__picker {
+    appearance: none;
+    font: inherit;
+    font-size: 13px;
+    color: var(--ink);
+    background: var(--card);
+    border: 1px solid var(--edge);
+    border-radius: 8px;
+    padding: 8px 10px;
+    min-height: 40px;
+    cursor: pointer;
+}
+
+.editor__status {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.editor__placeholder {
+    display: grid;
+    place-items: center;
+    min-height: 300px;
+    padding: 24px;
+    text-align: center;
+    color: var(--muted);
+    background: repeating-linear-gradient(45deg, #fbfcfb, #fbfcfb 10px, #f5f7f6 10px, #f5f7f6 20px);
+    border: 1px dashed var(--edge);
+    border-radius: 10px;
+}
+
+.editor__placeholder strong {
+    display: block;
+    color: var(--ink);
+    margin-bottom: 6px;
+}
+
+.editor__console {
+    margin: 0;
+    min-height: 80px;
+    max-height: 200px;
+    overflow: auto;
+    padding: 8px 12px;
+    background: #fbfcfb;
+    border: 1px solid var(--edge);
+    border-radius: 10px;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+.editor__console .line--error {
+    color: #c0392b;
+}
+
+/* ------------------------------------------------- поле коду з номерами */
+
+.editor__code-wrap {
+    display: flex;
+    background: var(--card);
+    border: 1px solid var(--edge);
+    border-radius: 10px;
+    overflow: hidden;
+    font-family: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.editor__gutter {
+    flex: 0 0 auto;
+    padding: 10px 8px 10px 12px;
+    text-align: right;
+    color: #a9b4af;
+    background: #f7f9f8;
+    border-right: 1px solid var(--edge);
+    white-space: pre;
+    overflow: hidden;
+    font-variant-numeric: tabular-nums;
+    /* прокрутка синхронізується з полем; власної смуги тут бути не має */
+    user-select: none;
+}
+
+.editor__code {
+    flex: 1;
+    min-width: 0;
+    min-height: 320px;
+    resize: vertical;
+    padding: 10px 12px;
+    color: var(--ink);
+    background: transparent;
+    border: none;
+    outline: none;
+    font: inherit;
+    tab-size: 4;
+    -webkit-user-select: text;
+    user-select: text;
+}

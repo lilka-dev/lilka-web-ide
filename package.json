@@ -1,0 +1,33 @@
+{
+  "name": "lilka-web-ide",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Навчальна web IDE для Лілки: Lua, mJS та Blockly з віртуальною консоллю",
+  "license": "GPL-2.0-or-later",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "gen:api": "node scripts/gen-api-spec.mjs --out src/generated/lilka-api.json",
+    "gen:fonts": "node scripts/gen-fonts.mjs --fetch",
+    "check": "npm run check:primitives && npm run check:fonts && npm run check:images && npm run check:runtime",
+    "check:primitives": "node --experimental-strip-types scripts/check-primitives.mts",
+    "check:fonts": "node --experimental-strip-types scripts/check-fonts.mts",
+    "render:testcard": "node --experimental-strip-types scripts/render-testcard.mts",
+    "gen:fmath": "node scripts/gen-fmath.mjs",
+    "check:images": "node --experimental-strip-types scripts/check-images.mts",
+    "check:runtime": "node --experimental-strip-types scripts/check-runtime.mts",
+    "gen:coverage": "node --experimental-strip-types scripts/gen-coverage.mts",
+    "gen:notes": "node scripts/gen-notes.mjs"
+  },
+  "devDependencies": {
+    "typescript": "~5.6.3",
+    "vite": "~5.4.11"
+  },
+  "dependencies": {
+    "coi-serviceworker": "~0.1.7",
+    "wasmoon": "^1.16.0"
+  }
+}
