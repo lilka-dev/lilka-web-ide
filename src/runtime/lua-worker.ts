@@ -37,6 +37,7 @@ self.onmessage = async (event: MessageEvent<HostMessage>) => {
                 onPrint: (text) => post({ type: 'print', text }),
                 // WebAudio у воркері недоступний, тому звук грає головний потік
                 onSound: (event) => post({ type: 'sound', event }),
+                onFileWrite: (path, data) => post({ type: 'file-write', path, data }),
             });
             await runtime.prepare();
             post({ type: 'ready' });
@@ -45,6 +46,7 @@ self.onmessage = async (event: MessageEvent<HostMessage>) => {
 
         if (message.type === 'run') {
             if (!runtime) throw new Error('Рантайм не готовий');
+            runtime.loadFiles(message.scriptPath, message.files, message.decodedPng);
             post({ type: 'started' });
             const result = runtime.run(message.code, message.name);
             if (result.reason === 'error') {

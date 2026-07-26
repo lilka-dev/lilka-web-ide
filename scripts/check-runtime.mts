@@ -144,12 +144,12 @@ async function runScript(code: string, options: { budget?: number } = {}) {
     ok((result.message ?? '').includes('main.lua:3'), `номер рядка в помилці: "${result.message}"`);
 }
 
-// 8. Заглушки кажуть, чому не працюють, а не мовчать
+// 8. Помилки файлової системи називають повний шлях, а не лише ім'я
 {
     const { result } = await runScript(`resources.load_image("x.bmp")`);
     ok(
-        (result.message ?? '').includes('файлова система'),
-        `заглушка пояснює причину: "${result.message}"`,
+        (result.message ?? '').includes('/sd/x.bmp'),
+        `помилка називає повний шлях: "${result.message}"`,
     );
 }
 

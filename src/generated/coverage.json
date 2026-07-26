@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-25T19:39:43.647Z",
+  "generatedAt": "2026-07-26T16:48:24.655Z",
   "totals": {
     "functions": 174,
-    "implemented": 80,
-    "stubs": 7,
+    "implemented": 95,
+    "stubs": 1,
     "inScopeFunctions": 108,
-    "inScopeImplemented": 80
+    "inScopeImplemented": 91
   },
   "namespaces": [
     {
@@ -30,6 +30,13 @@
       "missing": []
     },
     {
+      "name": "File",
+      "total": 5,
+      "done": 5,
+      "stub": 0,
+      "missing": []
+    },
+    {
       "name": "geometry",
       "total": 2,
       "done": 2,
@@ -40,6 +47,28 @@
       "name": "math",
       "total": 29,
       "done": 29,
+      "stub": 0,
+      "missing": []
+    },
+    {
+      "name": "resources",
+      "total": 6,
+      "done": 6,
+      "stub": 0,
+      "missing": []
+    },
+    {
+      "name": "sdcard",
+      "total": 4,
+      "done": 4,
+      "stub": 0,
+      "missing": [],
+      "note": "файлова система"
+    },
+    {
+      "name": "state",
+      "total": 3,
+      "done": 3,
       "stub": 0,
       "missing": []
     },
@@ -72,13 +101,6 @@
       "missing": []
     },
     {
-      "name": "resources",
-      "total": 6,
-      "done": 3,
-      "stub": 3,
-      "missing": []
-    },
-    {
       "name": "alertUI",
       "total": 7,
       "done": 0,
@@ -105,19 +127,6 @@
         "md5"
       ],
       "note": "не пріоритет"
-    },
-    {
-      "name": "File",
-      "total": 5,
-      "done": 0,
-      "stub": 0,
-      "missing": [
-        "exists",
-        "read",
-        "seek",
-        "size",
-        "write"
-      ]
     },
     {
       "name": "gpio",
@@ -243,19 +252,6 @@
       "note": "фізичні виводи"
     },
     {
-      "name": "sdcard",
-      "total": 4,
-      "done": 0,
-      "stub": 0,
-      "missing": [
-        "ls",
-        "open",
-        "remove",
-        "rename"
-      ],
-      "note": "файлова система"
-    },
-    {
       "name": "serial",
       "total": 10,
       "done": 0,
@@ -285,13 +281,6 @@
         "transfer"
       ],
       "note": "фізична шина"
-    },
-    {
-      "name": "state",
-      "total": 3,
-      "done": 0,
-      "stub": 3,
-      "missing": []
     },
     {
       "name": "wifi",

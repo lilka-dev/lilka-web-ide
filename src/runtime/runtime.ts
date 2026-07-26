@@ -29,6 +29,8 @@ export interface RuntimeOptions {
     instructionBudget?: number;
     wasmUri?: string;
     onPrint(text: string): void;
+    /** Головний потік зберігає те, що програма записала. */
+    onFileWrite?: (path: string, data: Uint8Array) => void;
     /** Звук іде назовні: у воркері WebAudio немає. Необов'язковий — під Node звуку просто не буде. */
     onSound?: BindingHooks['sound'];
 }
@@ -72,6 +74,7 @@ export class LuaRuntime {
             running: () => Atomics.load(control, CTRL.RUNNING) === 1,
             sound: (event) => this.options.onSound?.(event),
         });
+        this.device.onFileWrite = (path, data) => this.options.onFileWrite?.(path, data);
         this.coverage = {
             implemented: [...bindings.implemented].sort(),
             stubs: [...bindings.stubs].sort(),
@@ -91,6 +94,19 @@ export class LuaRuntime {
         const control = this.options.memory.control;
         Atomics.wait(control, CTRL.SLEEP, Atomics.load(control, CTRL.SLEEP), ms);
         Atomics.store(control, CTRL.HEARTBEAT, Date.now() - this.startedAt);
+    }
+
+    /** Наповнює віртуальну карту перед запуском. */
+    loadFiles(
+        scriptPath: string,
+        files: Array<[string, Uint8Array]>,
+        decodedPng: Array<[string, { width: number; height: number; rgba: Uint8Array }]> = [],
+    ): void {
+        const device = this.device;
+        if (!device) throw new Error('Спершу треба викликати prepare()');
+        device.scriptPath = scriptPath;
+        for (const [path, data] of files) device.vfs.write(path, data);
+        for (const [path, decoded] of decodedPng) device.decodedPng.set(path, decoded);
     }
 
     /** Запускає скрипт і крутить головний цикл до зупинки. */

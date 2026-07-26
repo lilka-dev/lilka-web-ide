@@ -12,6 +12,8 @@ import { Framebuffer } from '../emulator/framebuffer.ts';
 import type { Controller } from '../emulator/controller.ts';
 import type { FontJson } from '../emulator/font.ts';
 import { BuzzerAudio } from './buzzer-audio.ts';
+import { Vfs, PERSISTENT_MOUNTS } from '../emulator/vfs.ts';
+import { detectFormat, readPngSize } from '../emulator/image-loader.ts';
 import {
     CTRL,
     SHARED_BUTTONS,
@@ -25,6 +27,14 @@ export interface HostEvents {
     onPrint(text: string): void;
     onError(message: string): void;
     onStateChange(state: LuaHostState): void;
+    /** Файли змінилися — панель файлів має перемалюватися. */
+    onFilesChange?(): void;
+}
+
+interface DecodedPng {
+    width: number;
+    height: number;
+    rgba: Uint8Array;
 }
 
 export type LuaHostState = 'idle' | 'loading' | 'ready' | 'running' | 'stopping';
@@ -42,6 +52,15 @@ export class LuaHost {
     private lastProgressFrame = -1;
     private lastProgressAt = 0;
     private readonly buzzer = new BuzzerAudio();
+
+    /**
+     * Віртуальна карта пам'яті. Живе тут, а не у воркері, бо IndexedDB
+     * асинхронний, а `resources.load_image` — синхронний. Перед запуском
+     * уміст передається у воркер цілком.
+     */
+    readonly vfs = new Vfs();
+    /** PNG розпаковуються заздалегідь: у воркері це зробити синхронно годі. */
+    private readonly decodedPng = new Map<string, DecodedPng>();
 
     constructor(
         private readonly board: {
@@ -111,6 +130,11 @@ export class LuaHost {
             case 'sound':
                 this.buzzer.handle(message.event);
                 break;
+            case 'file-write':
+                this.vfs.write(message.path, message.data);
+                void this.persist();
+                this.events.onFilesChange?.();
+                break;
             case 'error':
                 this.buzzer.silence();
                 this.events.onError(message.message);
@@ -123,7 +147,27 @@ export class LuaHost {
         }
     }
 
-    run(code: string, name = 'main.lua'): void {
+    /**
+     * Кладе файл у віртуальну карту. PNG одразу розпаковується в RGBA —
+     * інакше програма не змогла б завантажити його синхронно.
+     */
+    async addFile(path: string, data: Uint8Array): Promise<void> {
+        this.vfs.write(path, data);
+        if (detectFormat(data) === 'png') {
+            this.decodedPng.set(path, await decodePng(data));
+        }
+        await this.persist();
+        this.events.onFilesChange?.();
+    }
+
+    removeFile(path: string): void {
+        this.vfs.remove(path);
+        this.decodedPng.delete(path);
+        void this.persist();
+        this.events.onFilesChange?.();
+    }
+
+    run(code: string, name = 'main.lua', scriptPath = '/sd/main.lua'): void {
         if (!this.worker || this.state !== 'ready') return;
         const control = this.memory!.control;
         Atomics.store(control, CTRL.FRAME, 0);
@@ -133,7 +177,14 @@ export class LuaHost {
         this.lastFrameSeen = -1;
         this.lastProgressFrame = -1;
         this.lastProgressAt = performance.now();
-        this.worker.postMessage({ type: 'run', code, name });
+        this.worker.postMessage({
+            type: 'run',
+            code,
+            name,
+            scriptPath,
+            files: this.vfs.allFiles().map((entry) => [entry.path, this.vfs.read(entry.path)!] as [string, Uint8Array]),
+            decodedPng: [...this.decodedPng.entries()],
+        });
     }
 
     /** М'яка зупинка: воркер вийде з циклу на наступній ітерації. */
@@ -233,4 +284,89 @@ export class LuaHost {
     get skippedFrames(): number {
         return this.memory ? Atomics.load(this.memory.control, CTRL.SKIPPED) : 0;
     }
+
+    /**
+     * Зберігає віртуальну карту в IndexedDB.
+     *
+     * `/tmp` навмисно пропускається: на залізі це рамдиск у PSRAM, і після
+     * перезавантаження він порожній. Постійний `/tmp` був би зручнішим, але
+     * поводився б інакше, ніж залізо.
+     */
+    private async persist(): Promise<void> {
+        try {
+            const db = await openDb();
+            const tx = db.transaction(STORE, 'readwrite');
+            const store = tx.objectStore(STORE);
+            store.clear();
+            for (const point of PERSISTENT_MOUNTS) {
+                for (const [path, data] of this.vfs.mount(point).entries()) {
+                    store.put(data, point + path);
+                }
+            }
+            db.close();
+        } catch (error) {
+            this.events.onError(`Не вдалося зберегти файли: ${String(error)}`);
+        }
+    }
+
+    /** Відновлює карту зі сховища. Викликається один раз під час запуску. */
+    async restore(): Promise<void> {
+        try {
+            const db = await openDb();
+            const tx = db.transaction(STORE, 'readonly');
+            const store = tx.objectStore(STORE);
+            const keys = await promisify<IDBValidKey[]>(store.getAllKeys());
+            const values = await promisify<Uint8Array[]>(store.getAll());
+            db.close();
+
+            for (let i = 0; i < keys.length; i++) {
+                const path = String(keys[i]);
+                const data = values[i];
+                this.vfs.write(path, data);
+                if (detectFormat(data) === 'png') this.decodedPng.set(path, await decodePng(data));
+            }
+            this.events.onFilesChange?.();
+        } catch {
+            // порожнє сховище — не помилка
+        }
+    }
+}
+
+/* ------------------------------------------------------------ сховище ------ */
+
+const DB_NAME = 'lilka-web-ide';
+const STORE = 'files';
+
+function promisify<T>(request: IDBRequest): Promise<T> {
+    return new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result as T);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+function openDb(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, 1);
+        request.onupgradeneeded = () => request.result.createObjectStore(STORE);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+/**
+ * Розпаковування PNG у RGBA.
+ *
+ * У воркері WebAudio немає, а тут немає синхронного декодера — тому PNG
+ * розпаковується заздалегідь, ще на головному потоці, коли файл потрапляє
+ * у віртуальну карту.
+ */
+async function decodePng(data: Uint8Array): Promise<DecodedPng> {
+    const { width, height } = readPngSize(data);
+    const bitmap = await createImageBitmap(new Blob([data.slice() as unknown as BlobPart], { type: 'image/png' }));
+    const canvas = new OffscreenCanvas(width, height);
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Не вдалося розпакувати PNG');
+    context.drawImage(bitmap, 0, 0);
+    const pixels = context.getImageData(0, 0, width, height);
+    return { width, height, rgba: new Uint8Array(pixels.data.buffer.slice(0)) };
 }

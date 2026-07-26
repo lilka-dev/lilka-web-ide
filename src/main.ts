@@ -23,6 +23,7 @@ import { Transform } from './emulator/transform.ts';
 import { color565 } from './emulator/color.ts';
 import { createShell } from './ui/shell.ts';
 import { createEditor, SAMPLE_CODE } from './ui/editor.ts';
+import { createFilesPanel } from './ui/files.ts';
 import { LuaHost } from './runtime/host.ts';
 import { loadAllFontJson } from './emulator/fonts.ts';
 import type { Font, FontJson } from './emulator/font.ts';
@@ -61,9 +62,16 @@ editorColumn.append(editor.root);
 
 let fontJson: Record<string, FontJson> = {};
 
+const files = createFilesPanel();
+editorColumn.append(files.root);
+
+/** Тека, у якій «лежить» поточна програма — від неї рахуються відносні шляхи. */
+let scriptDir = '/sd';
+
 const host = new LuaHost(board, DEFAULT_FONT, {
     onPrint: (text) => editor.print(text),
     onError: (message) => editor.print(message, 'err'),
+    onFilesChange: () => files.render(host.vfs.allFiles()),
     onStateChange: (state) => {
         const labels: Record<string, string> = {
             idle: 'запуск середовища…',
@@ -76,10 +84,28 @@ const host = new LuaHost(board, DEFAULT_FONT, {
     },
 });
 
+files.onAdd((path, data) => void host.addFile(path, data));
+files.onRemove((path) => host.removeFile(path));
+
+// Приклад із супутніми файлами «встановлюється» у віртуальну карту так само,
+// як лежав би на справжній: скрипт і картинки в одній теці.
+editor.onExample((example) => {
+    scriptDir = example.dir ?? '/sd';
+    if (!example.assets) return;
+    void (async () => {
+        for (const [name, url] of Object.entries(example.assets!)) {
+            const response = await fetch(url);
+            const data = new Uint8Array(await response.arrayBuffer());
+            await host.addFile(`${scriptDir}/${name}`, data);
+        }
+        editor.print(`Файли прикладу «${example.title}» додано в ${scriptDir}`);
+    })();
+});
+
 editor.onRun(() => {
     editor.clearConsole();
     surface.display.fillScreen(0);
-    host.run(editor.getCode());
+    host.run(editor.getCode(), 'main.lua', `${scriptDir}/main.lua`);
 });
 editor.onStop(() => host.stop());
 
@@ -247,6 +273,8 @@ void (async () => {
     try {
         fontJson = await loadAllFontJson();
         await host.start(fontJson);
+        await host.restore();
+        files.render(host.vfs.allFiles());
     } catch (error) {
         editor.print(error instanceof Error ? error.message : String(error), 'err');
         editor.setState('рантайм недоступний', false);

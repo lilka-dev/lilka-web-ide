@@ -64,8 +64,101 @@ function geometry.intersect_lines(ax, ay, bx, by, cx, cy, dx, dy)
     return r[1], r[2]
 end
 resources = toTable(api.resources)
-state = toTable(api.state)
 sandbox = toTable(api.sandbox)
+
+-- Файловий об'єкт sdcard.open(). У Lua немає close(): файл закривається
+-- складальником сміття через __gc. У mJS close() є — це розбіжність мов.
+local File = {}
+File.__index = File
+function File:size() return api.sdcard.__size(self.__id) end
+function File:seek(position) return api.sdcard.__seek(self.__id, position) end
+function File:read(maxBytes) return api.sdcard.__read(self.__id, maxBytes) end
+function File:write(text) return api.sdcard.__write(self.__id, text) end
+function File:exists() return api.sdcard.__exists(self.__id) end
+
+sdcard = {
+    ls = api.sdcard.ls,
+    remove = api.sdcard.remove,
+    rename = api.sdcard.rename,
+    open = function(path, mode)
+        return setmetatable({ __id = api.sdcard.__open(path, mode or "r") }, File)
+    end,
+}
+
+--[[
+    Стан програми.
+
+    Формат файлу дослівно повторює lualilka_state_save: по три рядки на
+    значення — ключ, тип, саме значення. Виняток — nil, у якого рядка значення
+    немає. Числа записуються через %lf, тобто з шістьма знаками після коми.
+
+    Завдяки точному формату файл .state переноситься між браузером і залізом:
+    рекорд, набраний у браузері, читається на справжній Лілці.
+--]]
+local stateData = {}
+
+local function serializeState()
+    local parts = {}
+    for key, value in pairs(stateData) do
+        local kind = type(value)
+        if kind == "number" then
+            parts[#parts + 1] = key .. "\nnumber\n" .. string.format("%f", value)
+        elseif kind == "string" then
+            parts[#parts + 1] = key .. "\nstring\n" .. value
+        elseif kind == "boolean" then
+            parts[#parts + 1] = key .. "\nboolean\n" .. (value and "1" or "0")
+        elseif kind == "nil" then
+            parts[#parts + 1] = key .. "\nnil"
+        end
+        -- таблиці та функції прошивка мовчки пропускає
+    end
+    if #parts == 0 then return "" end
+    return table.concat(parts, "\n") .. "\n"
+end
+
+local function deserializeState(text)
+    stateData = {}
+    if text == nil or text == "" then return end
+    local lines = {}
+    for line in (text .. "\n"):gmatch("(.-)\n") do lines[#lines + 1] = line end
+
+    local i = 1
+    while i <= #lines do
+        local key = lines[i]
+        local kind = lines[i + 1]
+        if key == nil or key == "" or kind == nil then break end
+        if kind == "nil" then
+            stateData[key] = nil
+            i = i + 2
+        else
+            local raw = lines[i + 2]
+            if kind == "number" then stateData[key] = tonumber(raw)
+            elseif kind == "string" then stateData[key] = raw
+            elseif kind == "boolean" then stateData[key] = raw == "1" end
+            i = i + 3
+        end
+    end
+end
+
+state = setmetatable({}, {
+    __index = function(_, key)
+        if key == "save" then
+            return function() api.state.__save(serializeState()) end
+        elseif key == "reset" then
+            return function() stateData = {} api.state.__reset() end
+        elseif key == "clear" then
+            return function() stateData = {} end
+        elseif key == "path" then
+            return api.state.__path()
+        end
+        return stateData[key]
+    end,
+    __newindex = function(_, key, value)
+        stateData[key] = value
+    end,
+})
+
+deserializeState(api.state.__load())
 
 -- math замінюється ПОВНІСТЮ: так робить lualilka_math_register.
 -- math.huge, math.fmod, math.tointeger, math.type на Лілці відсутні.

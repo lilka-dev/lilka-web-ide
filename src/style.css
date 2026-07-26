@@ -457,3 +457,113 @@ body {
     -webkit-user-select: text;
     user-select: text;
 }
+
+/* ------------------------------------------------------ панель файлів */
+
+.files {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--card);
+    border: 1px solid var(--edge);
+    border-radius: 10px;
+    transition: border-color 80ms linear, background 80ms linear;
+}
+
+/* під час перетягування межа підсвічується — інакше незрозуміло, куди кидати */
+.files--over {
+    border-color: var(--teal);
+    background: #f2fbfa;
+}
+
+.files__head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 13px;
+}
+
+.files__hint {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.files__hint--error {
+    color: #c0392b;
+}
+
+.files__list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 220px;
+    overflow: auto;
+}
+
+.files__mount {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    color: var(--teal);
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 12px;
+}
+
+.files__mount em {
+    font-style: normal;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 10px;
+}
+
+.files__empty {
+    padding: 2px 0 2px 12px;
+    color: #a9b4af;
+    font-size: 11px;
+}
+
+.files__row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 0 3px 12px;
+    font-size: 12px;
+}
+
+.files__name {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+
+.files__dir {
+    color: var(--muted);
+    font-size: 11px;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+
+.files__size {
+    margin-left: auto;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    font-size: 11px;
+}
+
+.files__remove {
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.files__remove:hover {
+    background: #fdecea;
+    color: #c0392b;
+}

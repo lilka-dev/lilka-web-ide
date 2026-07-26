@@ -48,6 +48,8 @@ export interface EditorPanel {
     setState(state: string, running: boolean): void;
     onRun(handler: () => void): void;
     onStop(handler: () => void): void;
+    /** Вибрано приклад — можливо, із супутніми файлами. */
+    onExample(handler: (example: (typeof EXAMPLES)[number]) => void): void;
 }
 
 export function createEditor(initialCode: string): EditorPanel {
@@ -156,12 +158,14 @@ export function createEditor(initialCode: string): EditorPanel {
         option.textContent = example.title;
         picker.append(option);
     }
+    let exampleHandler: (example: (typeof EXAMPLES)[number]) => void = () => {};
     picker.addEventListener('change', () => {
         const example = EXAMPLES.find((e) => e.id === picker.value);
         if (!example) return;
         textarea.value = example.code;
         localStorage.setItem(STORAGE_KEY, example.code);
         syncGutter();
+        exampleHandler(example);
     });
 
     const status = document.createElement('span');
@@ -210,6 +214,9 @@ export function createEditor(initialCode: string): EditorPanel {
         },
         onRun: (handler) => runButton.addEventListener('click', handler),
         onStop: (handler) => stopButton.addEventListener('click', handler),
+        onExample: (handler: (example: (typeof EXAMPLES)[number]) => void) => {
+            exampleHandler = handler;
+        },
     };
 }
 

@@ -268,13 +268,33 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
         ),
     };
 
+    const decoder = new TextDecoder();
+    const encoder = new TextEncoder();
+
     const resources = {
-        load_image: stub(
+        load_image: impl(
             'resources.load_image',
-            'файлова система ще не підключена — зображення поки можна створювати лише процедурно',
+            (path: string, transparentColor?: number, pivotX?: number, pivotY?: number) => {
+                // pivot читається лише коли аргументів БІЛЬШЕ ТРЬОХ: виклик із
+                // трьома тихо його втрачає. Особливість первотвору.
+                const hasPivot = pivotX !== undefined && pivotY !== undefined;
+                const image = device.loadImage(path, {
+                    transparentColor: transparentColor ?? NO_TRANSPARENT_COLOR,
+                    pivotX: hasPivot ? pivotX : 0,
+                    pivotY: hasPivot ? pivotY : 0,
+                });
+                return imageHandle(device.images.add(image), image);
+            },
         ),
-        read_file: stub('resources.read_file', 'файлова система ще не підключена'),
-        write_file: stub('resources.write_file', 'файлова система ще не підключена'),
+        read_file: impl('resources.read_file', (path: string) => {
+            const full = device.resolveResourcePath(path);
+            const bytes = device.vfs.read(full);
+            if (!bytes) throw new Error(`Не вдалося відкрити файл ${full}`);
+            return decoder.decode(bytes);
+        }),
+        write_file: impl('resources.write_file', (path: string, content: string) => {
+            device.writeFile(device.resolveResourcePath(path), encoder.encode(content));
+        }),
         rotate_image: impl('resources.rotate_image', (handle: unknown, angle: number, blank: number) =>
             imageHandle(device.images.add(device.image(handle).rotate(angle, blank)), device.image(handle)),
         ),
@@ -286,10 +306,132 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
         ),
     };
 
+    /**
+     * Файлові операції зі світу `sdcard.*`.
+     *
+     * Шлях тут склеюється з "/sd" БЕЗ роздільника — так робить прошивка.
+     * Тому шлях мусить починатися з риски. Поведінку відтворено, але до
+     * помилки додається підказка: на залізі консолі середовища немає, тож
+     * пояснення нічого не ламає.
+     */
+    const sdPath = (path: string, operation: string): string => {
+        const resolved = device.resolveSdPath(path);
+        if (resolved.suspicious) {
+            hooks.print(
+                `⚠ ${operation}: шлях "${path}" перетворився на "${resolved.path}". ` +
+                    `Прошивка склеює "/sd" і шлях без роздільника, тож шлях має починатися з "/" — спробуйте "/${path}".`,
+            );
+        }
+        return resolved.path;
+    };
+
+    /** Дескриптор відкритого файлу. Порт FILE* із метатаблиці FILE_OBJECT. */
+    interface OpenFile {
+        path: string;
+        mode: string;
+        position: number;
+        ok: boolean;
+    }
+
+    const openFiles = new Map<number, OpenFile>();
+    let nextFileId = 1;
+
+    const fileOf = (handle: unknown): OpenFile => {
+        const id = typeof handle === 'number' ? handle : (handle as { id?: number } | null)?.id;
+        const file = typeof id === 'number' ? openFiles.get(id) : undefined;
+        if (!file) throw new Error('Очікувався файловий об\'єкт');
+        return file;
+    };
+
+    const sdcard = {
+        __open: impl('sdcard.open', (path: string, mode = 'r') => {
+            const full = sdPath(path, 'sdcard.open');
+            const exists = device.vfs.exists(full);
+            const writing = mode.includes('w') || mode.includes('a');
+            if (writing && !exists) device.writeFile(full, new Uint8Array(0));
+            const id = nextFileId++;
+            openFiles.set(id, { path: full, mode, position: 0, ok: exists || writing });
+            return id;
+        }),
+        // exists() у прошивці — це !!filePointer, тобто «чи вдалося відкрити»,
+        // а не «чи існує шлях»
+        __exists: (handle: unknown) => fileOf(handle).ok,
+        __size: (handle: unknown) => {
+            const file = fileOf(handle);
+            if (!file.ok) throw new Error('Не вдалося визначити розмір файлу');
+            return device.vfs.read(file.path)?.length ?? 0;
+        },
+        __seek: (handle: unknown, position: number) => {
+            fileOf(handle).position = Math.trunc(position);
+        },
+        __read: (handle: unknown, maxBytes: number) => {
+            const file = fileOf(handle);
+            if (!file.ok) throw new Error('Не вдалося прочитати файл');
+            const bytes = device.vfs.read(file.path) ?? new Uint8Array(0);
+            const slice = bytes.subarray(file.position, file.position + Math.trunc(maxBytes));
+            file.position += slice.length;
+            return decoder.decode(slice);
+        },
+        // write у прошивці — це fprintf("%s"), тож запис обривається на
+        // нульовому байті. read при цьому двійково-безпечний. Асиметрія
+        // первотвору збережена.
+        __write: (handle: unknown, text: string) => {
+            const file = fileOf(handle);
+            if (!file.ok) throw new Error('Не вдалося записати у файл');
+            const cut = text.indexOf('\0');
+            const payload = encoder.encode(cut >= 0 ? text.slice(0, cut) : text);
+            const current = device.vfs.read(file.path) ?? new Uint8Array(0);
+            const merged = new Uint8Array(Math.max(current.length, file.position + payload.length));
+            merged.set(current);
+            merged.set(payload, file.position);
+            file.position += payload.length;
+            device.writeFile(file.path, merged);
+        },
+        ls: impl('sdcard.ls', (path: string) => {
+            const names = device.vfs.list('/sd' + (path.startsWith('/') ? path : '/' + path));
+            // Порожній каталог у прошивці — це помилка, а не порожня таблиця
+            if (names.length === 0) throw new Error('Каталог порожній або сталася помилка читання');
+            return names;
+        }),
+        remove: impl('sdcard.remove', (path: string) => {
+            const full = sdPath(path, 'sdcard.remove');
+            if (!device.vfs.remove(full)) throw new Error(`Не вдалося видалити ${full}`);
+        }),
+        rename: impl('sdcard.rename', (from: string, to: string) => {
+            const source = sdPath(from, 'sdcard.rename');
+            const destination = sdPath(to, 'sdcard.rename');
+            if (!device.vfs.rename(source, destination)) {
+                throw new Error(`Не вдалося перейменувати ${source}`);
+            }
+        }),
+    };
+
+    // Методи файлового об'єкта живуть у преамбулі поверх __-функцій вище,
+    // тож у звіті покриття їх треба позначити окремо
+    for (const name of ['File.exists', 'File.read', 'File.seek', 'File.size', 'File.write']) {
+        implemented.add(name);
+    }
+
+    /**
+     * Збереження стану.
+     *
+     * Формат — той самий текстовий, що в `lualilka_state_save`: по три рядки
+     * на значення (ключ, тип, значення). Завдяки цьому файл `.state`
+     * переноситься між браузером і залізом.
+     */
     const state = {
-        save: stub('state.save', 'збереження стану ще не підключене'),
-        clear: stub('state.clear', 'збереження стану ще не підключене'),
-        reset: stub('state.reset', 'збереження стану ще не підключене'),
+        __path: impl('state.path', () => device.scriptPath.replace(/\.[^./]*$/, '.state')),
+        __save: impl('state.save', (serialized: string) => {
+            device.writeFile(state.__path(), encoder.encode(serialized));
+        }),
+        __load: impl('state.load', () => {
+            const bytes = device.vfs.read(state.__path());
+            return bytes ? decoder.decode(bytes) : '';
+        }),
+        __clear: impl('state.clear', () => {}),
+        __reset: impl('state.reset', () => {
+            device.vfs.remove(state.__path());
+        }),
     };
 
     /**
@@ -385,6 +527,7 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
             math: mathApi,
             geometry,
             resources,
+            sdcard,
             state,
             transforms,
             buzzer,

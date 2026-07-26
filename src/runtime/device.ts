@@ -10,6 +10,8 @@ import { Framebuffer } from '../emulator/framebuffer.ts';
 import { TextRenderer } from '../emulator/text.ts';
 import { fontFromJson, type Font, type FontJson } from '../emulator/font.ts';
 import { Image, ImageRegistry } from '../emulator/image.ts';
+import { Vfs, joinPath, normalizePath, dirname } from '../emulator/vfs.ts';
+import { detectFormat, imageFromRgba, loadImageBMP, type LoadOptions } from '../emulator/image-loader.ts';
 import { CTRL, SHARED_BUTTONS, bufferOffset, type SharedMemory } from './shared.ts';
 
 export interface ButtonSnapshot {
@@ -18,9 +20,24 @@ export interface ButtonSnapshot {
     just_released: boolean;
 }
 
+/** Заздалегідь розпакований PNG: розпакування в браузері асинхронне. */
+export interface DecodedPng {
+    width: number;
+    height: number;
+    rgba: Uint8Array;
+}
+
 export class LilkaDevice {
     readonly images = new ImageRegistry();
     readonly fonts = new Map<string, Font>();
+    readonly vfs = new Vfs();
+
+    /** Повний шлях до скрипта — від нього рахуються відносні шляхи resources.*. */
+    scriptPath = '/sd/main.lua';
+    /** RGBA для PNG-файлів, розпакованих заздалегідь на головному потоці. */
+    readonly decodedPng = new Map<string, DecodedPng>();
+    /** Файли, які програма записала — головний потік має їх зберегти. */
+    onFileWrite: ((path: string, data: Uint8Array) => void) | null = null;
 
     /** Індекс буфера, у який зараз малює програма. */
     private canvasIndex = 0;
@@ -151,6 +168,60 @@ export class LilkaDevice {
             slot.just_released = false;
         }
         return state;
+    }
+
+    /** Тека скрипта: `dir` у реєстрі Lua з `LuaFileRunnerApp::run`. */
+    get scriptDir(): string {
+        return dirname(this.scriptPath);
+    }
+
+    /**
+     * Шлях зі світу `resources.*`.
+     *
+     * Порт `luapath_to_path`: абсолютний шлях лишається як є, відносний
+     * приклеюється до теки скрипта.
+     */
+    resolveResourcePath(path: string): string {
+        if (path.startsWith('/')) return normalizePath(path);
+        return normalizePath(joinPath(this.scriptDir, path));
+    }
+
+    /**
+     * Шлях зі світу `sdcard.*`.
+     *
+     * Порт `getSDRoot() + path` — саме склеювання, БЕЗ joinPath. Тому
+     * `sdcard.open("a.txt")` дає "/sda.txt", і файл не відкривається.
+     * Особливість первотвору відтворена; попередження додається окремо,
+     * бо консолі середовища на залізі не існує в принципі.
+     */
+    resolveSdPath(path: string): { path: string; suspicious: boolean } {
+        return { path: '/sd' + path, suspicious: !path.startsWith('/') };
+    }
+
+    /** Порт `Resources::loadImage`: формат визначається за підписом файлу. */
+    loadImage(path: string, options: LoadOptions): Image {
+        const full = this.resolveResourcePath(path);
+        const bytes = this.vfs.read(full);
+        if (!bytes) throw new Error(`Не вдалося відкрити файл ${full}`);
+
+        const format = detectFormat(bytes);
+        if (format === 'bmp') return loadImageBMP(bytes, options);
+        if (format === 'png') {
+            const decoded = this.decodedPng.get(full);
+            if (!decoded) {
+                throw new Error(
+                    `PNG ${full} не розпакований. Файли з PNG треба додати у файлову систему ` +
+                        'до запуску програми — розпакування в браузері асинхронне.',
+                );
+            }
+            return imageFromRgba(decoded.rgba, decoded.width, decoded.height, options);
+        }
+        throw new Error(`Невідомий формат зображення: ${full} (прошивка читає лише BMP і PNG)`);
+    }
+
+    writeFile(path: string, data: Uint8Array): void {
+        this.vfs.write(path, data);
+        this.onFileWrite?.(path, data);
     }
 
     font(name: string): Font {

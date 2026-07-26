@@ -84,11 +84,24 @@ export type WorkerMessage =
     | { type: 'started' }
     | { type: 'print'; text: string }
     | { type: 'sound'; event: SoundEvent }
+    | { type: 'file-write'; path: string; data: Uint8Array }
     | { type: 'error'; message: string; traceback?: string }
     | { type: 'finished'; reason: 'exit' | 'no-loop' | 'stopped' };
 
 /** Повідомлення головного потоку до воркера. */
 export type HostMessage =
     | { type: 'init'; memory: SharedMemory; fonts: Record<string, unknown>; board: unknown }
-    | { type: 'run'; code: string; name: string }
+    | {
+          type: 'run';
+          code: string;
+          name: string;
+          /** Повний шлях скрипта: від нього рахуються відносні шляхи resources.*. */
+          scriptPath: string;
+          /** Уміст віртуальної карти. Передається цілком перед запуском, бо
+           *  resources.load_image синхронний і довантажити файл посеред кадру
+           *  неможливо. */
+          files: Array<[string, Uint8Array]>;
+          /** RGBA для PNG: розпакування в браузері асинхронне, тож заздалегідь. */
+          decodedPng: Array<[string, { width: number; height: number; rgba: Uint8Array }]>;
+      }
     | { type: 'stop' };
