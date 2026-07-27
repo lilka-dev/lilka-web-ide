@@ -14,6 +14,8 @@ import { Transform } from '../emulator/transform.ts';
 import { fCos360, fSin360 } from '../emulator/fmath.ts';
 import { NOTES } from '../generated/notes.ts';
 import { Image, NO_TRANSPARENT_COLOR } from '../emulator/image.ts';
+import { Alert, InputDialog, ProgressDialog } from '../emulator/widgets.ts';
+import type { ButtonName } from '../emulator/controller.ts';
 import type { LilkaDevice } from './device.ts';
 
 /** Причини зупинки, які прив'язки повідомляють нагору через виняток. */
@@ -406,6 +408,99 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
         }),
     };
 
+    /**
+     * Віджети інтерфейсу.
+     *
+     * У прошивці кожен віджет — це userdata з метатаблицею. Тут — реєстр із
+     * числовими ідентифікаторами, як і для зображень: об'єкти з боку JS
+     * приїжджають у Lua проксі, а не таблицями, і поводяться інакше.
+     *
+     * Особливість первотвору: `draw()` кожного віджета САМ викликає
+     * `app->queueDraw()`. Тобто віджет публікує кадр, і робити це в програмі
+     * не треба.
+     */
+    type Widget = Alert | InputDialog | ProgressDialog;
+    const widgets = new Map<number, Widget>();
+    let nextWidgetId = 1;
+
+    const widgetOf = <T extends Widget>(handle: unknown, kind: new (...args: never[]) => T): T => {
+        const id = typeof handle === 'number' ? handle : (handle as { id?: number } | null)?.id;
+        const widget = typeof id === 'number' ? widgets.get(id) : undefined;
+        if (!(widget instanceof kind)) throw new Error('Очікувався інший тип віджета');
+        return widget;
+    };
+
+    const addWidget = (widget: Widget): number => {
+        const id = nextWidgetId++;
+        widgets.set(id, widget);
+        return id;
+    };
+
+    const fonts = (name: string) => device.font(name);
+
+    const ui = {
+        __new_alert: impl('alertUI', (title: string, message: string) =>
+            addWidget(new Alert(String(title), String(message))),
+        ),
+        __alert_update: impl('alertUI.update', (handle: unknown) =>
+            widgetOf(handle, Alert).update(device.readControllerState()),
+        ),
+        __alert_draw: impl('alertUI.draw', (handle: unknown) => {
+            widgetOf(handle, Alert).draw(fb(), fonts);
+            device.queueDraw();
+        }),
+        __alert_isFinished: impl('alertUI.isFinished', (handle: unknown) =>
+            widgetOf(handle, Alert).isFinished(),
+        ),
+        __alert_setTitle: impl('alertUI.setTitle', (handle: unknown, title: string) => {
+            widgetOf(handle, Alert).setTitle(String(title));
+        }),
+        __alert_setMessage: impl('alertUI.setMessage', (handle: unknown, message: string) => {
+            widgetOf(handle, Alert).setMessage(String(message));
+        }),
+        __alert_addActivationButton: impl('alertUI.addActivationButton', (handle: unknown, button: string) => {
+            widgetOf(handle, Alert).addActivationButton(String(button) as ButtonName);
+        }),
+        __alert_getButton: impl('alertUI.getButton', (handle: unknown) =>
+            widgetOf(handle, Alert).getButton(),
+        ),
+
+        __new_keyboard: impl('keyboardUI', (title: string) => addWidget(new InputDialog(String(title)))),
+        __kb_update: impl('keyboardUI.update', (handle: unknown) =>
+            widgetOf(handle, InputDialog).update(device.readControllerState(), hooks.now()),
+        ),
+        __kb_draw: impl('keyboardUI.draw', (handle: unknown) => {
+            widgetOf(handle, InputDialog).draw(fb(), fonts);
+            device.queueDraw();
+        }),
+        __kb_isFinished: impl('keyboardUI.isFinished', (handle: unknown) =>
+            widgetOf(handle, InputDialog).isFinished(),
+        ),
+        __kb_setMasked: impl('keyboardUI.setMasked', (handle: unknown, masked: boolean) => {
+            widgetOf(handle, InputDialog).setMasked(!!masked);
+        }),
+        __kb_setValue: impl('keyboardUI.setValue', (handle: unknown, value: string) => {
+            widgetOf(handle, InputDialog).setValue(String(value));
+        }),
+        __kb_getValue: impl('keyboardUI.getValue', (handle: unknown) =>
+            widgetOf(handle, InputDialog).getValue(),
+        ),
+
+        __new_progress: impl('progressUI', (title: string, message: string) =>
+            addWidget(new ProgressDialog(String(title), String(message))),
+        ),
+        __progress_draw: impl('progressUI.draw', (handle: unknown) => {
+            widgetOf(handle, ProgressDialog).draw(fb(), fonts);
+            device.queueDraw();
+        }),
+        __progress_setMessage: impl('progressUI.setMessage', (handle: unknown, message: string) => {
+            widgetOf(handle, ProgressDialog).setMessage(String(message));
+        }),
+        __progress_setProgress: impl('progressUI.setProgress', (handle: unknown, progress: number) => {
+            widgetOf(handle, ProgressDialog).setProgress(Number(progress));
+        }),
+    };
+
     // Методи файлового об'єкта живуть у преамбулі поверх __-функцій вище,
     // тож у звіті покриття їх треба позначити окремо
     for (const name of ['File.exists', 'File.read', 'File.seek', 'File.size', 'File.write']) {
@@ -534,6 +629,7 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
             audio,
             console,
             sandbox,
+            ui,
             __notes: { ...NOTES },
             __running: () => hooks.running(),
             __millis: () => hooks.now(),

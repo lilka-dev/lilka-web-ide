@@ -211,6 +211,57 @@ colors = {
     midnight_blue = 0x18CE, orange_red = 0xFB44,
 }
 
+--[[
+    Віджети інтерфейсу.
+
+    У прошивці це userdata з метатаблицею, тож форма виклику така:
+        local dialog = alertUI("Заголовок", "Повідомлення")
+        dialog:update()
+        if dialog:isFinished() then ... end
+
+    Тут — таблиця з ідентифікатором і метатаблицею методів. Форма для програми
+    та сама.
+
+    ProgressDialog навмисно НЕ має update() та isFinished(): їх немає й у
+    первотворі.
+--]]
+local Alert = {}
+Alert.__index = Alert
+function Alert:update() api.ui.__alert_update(self.__id) end
+function Alert:draw() api.ui.__alert_draw(self.__id) end
+function Alert:isFinished() return api.ui.__alert_isFinished(self.__id) end
+function Alert:setTitle(title) api.ui.__alert_setTitle(self.__id, title) end
+function Alert:setMessage(message) api.ui.__alert_setMessage(self.__id, message) end
+function Alert:addActivationButton(button) api.ui.__alert_addActivationButton(self.__id, button) end
+function Alert:getButton() return api.ui.__alert_getButton(self.__id) end
+
+function alertUI(title, message)
+    return setmetatable({ __id = api.ui.__new_alert(title, message) }, Alert)
+end
+
+local Keyboard = {}
+Keyboard.__index = Keyboard
+function Keyboard:update() api.ui.__kb_update(self.__id) end
+function Keyboard:draw() api.ui.__kb_draw(self.__id) end
+function Keyboard:isFinished() return api.ui.__kb_isFinished(self.__id) end
+function Keyboard:setMasked(masked) api.ui.__kb_setMasked(self.__id, masked) end
+function Keyboard:setValue(value) api.ui.__kb_setValue(self.__id, value) end
+function Keyboard:getValue() return api.ui.__kb_getValue(self.__id) end
+
+function keyboardUI(title)
+    return setmetatable({ __id = api.ui.__new_keyboard(title) }, Keyboard)
+end
+
+local Progress = {}
+Progress.__index = Progress
+function Progress:draw() api.ui.__progress_draw(self.__id) end
+function Progress:setMessage(message) api.ui.__progress_setMessage(self.__id, message) end
+function Progress:setProgress(progress) api.ui.__progress_setProgress(self.__id, progress) end
+
+function progressUI(title, message)
+    return setmetatable({ __id = api.ui.__new_progress(title, message) }, Progress)
+end
+
 -- Ноти для зумера. У прошивці ця таблиця теж є, і теж відсутня в анотаціях.
 notes = api.__notes
 

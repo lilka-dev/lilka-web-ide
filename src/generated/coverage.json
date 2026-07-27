@@ -1,13 +1,20 @@
 {
-  "generatedAt": "2026-07-26T16:48:24.655Z",
+  "generatedAt": "2026-07-27T07:09:18.944Z",
   "totals": {
     "functions": 174,
-    "implemented": 95,
+    "implemented": 111,
     "stubs": 1,
     "inScopeFunctions": 108,
-    "inScopeImplemented": 91
+    "inScopeImplemented": 107
   },
   "namespaces": [
+    {
+      "name": "alertUI",
+      "total": 7,
+      "done": 7,
+      "stub": 0,
+      "missing": []
+    },
     {
       "name": "buzzer",
       "total": 3,
@@ -44,9 +51,23 @@
       "missing": []
     },
     {
+      "name": "keyboardUI",
+      "total": 6,
+      "done": 6,
+      "stub": 0,
+      "missing": []
+    },
+    {
       "name": "math",
       "total": 29,
       "done": 29,
+      "stub": 0,
+      "missing": []
+    },
+    {
+      "name": "progressUI",
+      "total": 3,
+      "done": 3,
       "stub": 0,
       "missing": []
     },
@@ -99,21 +120,6 @@
       "done": 6,
       "stub": 1,
       "missing": []
-    },
-    {
-      "name": "alertUI",
-      "total": 7,
-      "done": 0,
-      "stub": 0,
-      "missing": [
-        "addActivationButton",
-        "draw",
-        "getButton",
-        "isFinished",
-        "setMessage",
-        "setTitle",
-        "update"
-      ]
     },
     {
       "name": "crypto",
@@ -180,20 +186,6 @@
       "note": "фізична шина"
     },
     {
-      "name": "keyboardUI",
-      "total": 6,
-      "done": 0,
-      "stub": 0,
-      "missing": [
-        "draw",
-        "getValue",
-        "isFinished",
-        "setMasked",
-        "setValue",
-        "update"
-      ]
-    },
-    {
       "name": "mqtt",
       "total": 7,
       "done": 0,
@@ -224,17 +216,6 @@
         "settimeout"
       ],
       "note": "мережа пристрою"
-    },
-    {
-      "name": "progressUI",
-      "total": 3,
-      "done": 0,
-      "stub": 0,
-      "missing": [
-        "draw",
-        "setMessage",
-        "setProgress"
-      ]
     },
     {
       "name": "pwm",

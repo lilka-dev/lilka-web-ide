@@ -114,4 +114,64 @@ export class TextRenderer {
     measure(text: string): number {
         return (this.font?.measure(text) ?? 0) * this.scaleX;
     }
+
+    /**
+     * Порт `Arduino_GFX::getTextBounds`.
+     *
+     * Повертає обмежувальну рамку рядка відносно позиції курсора. Потрібен
+     * віджетам: `ProgressDialog` центрує відсоток саме через нього, а
+     * `InputDialog` — підписи на клавішах.
+     *
+     * Важлива тонкість первотвору: рамка рахується по РЕАЛЬНИХ пікселях
+     * глифів, а не по `delta_x`. Тому ширина «100%» менша за суму зсувів
+     * курсора, і центрування виходить трохи іншим, ніж дало б `measure()`.
+     *
+     * Перенос рядка враховується так само, як у `charBounds`: якщо ввімкнено
+     * `wrap` і символ не влазить у межу, курсор переходить на новий рядок ще
+     * до обчислення рамки.
+     */
+    textBounds(text: string, startX = 0, startY = 0): { x: number; y: number; width: number; height: number } {
+        let x = startX;
+        let y = startY;
+        let minX = this.maxTextX;
+        // У первотворі початкове minY — це _max_text_y, тобто нижня межа
+        let minY = this.maxTextY;
+        let maxX = this.minTextX;
+        let maxY = Number.NEGATIVE_INFINITY;
+        let any = false;
+
+        for (const character of text) {
+            const codepoint = character.codePointAt(0)!;
+            if (codepoint === 0x0a) {
+                x = this.minTextX;
+                y += this.lineAdvance;
+                continue;
+            }
+            if (codepoint === 0x0d) continue;
+
+            const glyph = this.font?.glyph(codepoint);
+            if (!glyph) continue;
+
+            if (glyph.width > 0 && this.wrap && x + this.scaleX * glyph.width - 1 > this.maxTextX) {
+                x = this.minTextX;
+                y += this.lineAdvance;
+            }
+
+            const x1 = x + glyph.offsetX * this.scaleX;
+            const y1 = y - glyph.offsetY * this.scaleY;
+            const x2 = x1 + glyph.width * this.scaleX - 1;
+            const y2 = y1 + glyph.height * this.scaleY - 1;
+
+            if (x1 < minX) minX = x1;
+            if (y1 < minY) minY = y1;
+            if (x2 > maxX) maxX = x2;
+            if (y2 > maxY) maxY = y2;
+            any = true;
+
+            x += this.scaleX * glyph.advance;
+        }
+
+        if (!any) return { x: startX, y: startY, width: 0, height: 0 };
+        return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
+    }
 }
