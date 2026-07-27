@@ -415,9 +415,21 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
      * числовими ідентифікаторами, як і для зображень: об'єкти з боку JS
      * приїжджають у Lua проксі, а не таблицями, і поводяться інакше.
      *
-     * Особливість первотвору: `draw()` кожного віджета САМ викликає
-     * `app->queueDraw()`. Тобто віджет публікує кадр, і робити це в програмі
-     * не треба.
+     * ВІДСТУП ВІД ПЕРВОТВОРУ, свідомий і єдиний такий у проєкті.
+     *
+     * У прошивці `lualilka_draw_object_*` після малювання викликає
+     * `app->queueDraw()`. Але головний цикл `AbstractLuaRunnerApp::execute()`
+     * наприкінці кадру викликає `queueDraw()` ще раз. Отже на кожен кадр
+     * припадає ДВА обміни буферів.
+     *
+     * Наслідок: після першого обміну публікується кадр із віджетом, після
+     * другого — протилежний буфер, у який цього кадру ніхто не малював. Екран
+     * поперемінно показує віджет і застарілий вміст, а лічильник пропущених
+     * кадрів показує рівно половину.
+     *
+     * Тут другий виклик прибрано: кадр публікує лише головний цикл. Це
+     * порушує правило «відтворювати як є», але без цього віджети непридатні
+     * до використання. Дефект надіслано команді прошивки (D5).
      */
     type Widget = Alert | InputDialog | ProgressDialog;
     const widgets = new Map<number, Widget>();
@@ -447,7 +459,6 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
         ),
         __alert_draw: impl('alertUI.draw', (handle: unknown) => {
             widgetOf(handle, Alert).draw(fb(), fonts);
-            device.queueDraw();
         }),
         __alert_isFinished: impl('alertUI.isFinished', (handle: unknown) =>
             widgetOf(handle, Alert).isFinished(),
@@ -471,7 +482,6 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
         ),
         __kb_draw: impl('keyboardUI.draw', (handle: unknown) => {
             widgetOf(handle, InputDialog).draw(fb(), fonts);
-            device.queueDraw();
         }),
         __kb_isFinished: impl('keyboardUI.isFinished', (handle: unknown) =>
             widgetOf(handle, InputDialog).isFinished(),
@@ -491,7 +501,6 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
         ),
         __progress_draw: impl('progressUI.draw', (handle: unknown) => {
             widgetOf(handle, ProgressDialog).draw(fb(), fonts);
-            device.queueDraw();
         }),
         __progress_setMessage: impl('progressUI.setMessage', (handle: unknown, message: string) => {
             widgetOf(handle, ProgressDialog).setMessage(String(message));

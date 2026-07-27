@@ -283,5 +283,46 @@ async function runScript(code: string, options: { budget?: number } = {}) {
     );
 }
 
+// 18. Віджет не має публікувати кадр самостійно.
+//     У прошивці draw() віджета викликає queueDraw(), і головний цикл робить
+//     це ще раз — виходить два обміни буферів на кадр, а екран поперемінно
+//     показує віджет і застарілий буфер. Тут другий виклик прибрано, і ця
+//     перевірка стежить, щоб він не повернувся.
+{
+    const { frame } = await runScript(`
+        local kb = keyboardUI("Ім'я")
+        local n = 0
+        function lilka.update(d) n = n + 1 if n >= 5 then util.exit() end end
+        function lilka.draw() kb:draw() end
+    `);
+    ok(frame === 5, `рівно один кадр на оновлення, отримано ${frame} на 5 оновлень`);
+}
+
+// 19. Обидва буфери містять намальований віджет — інакше буде мерехтіння
+{
+    const memory = createSharedMemory(W, H);
+    const runtime = new LuaRuntime({
+        memory,
+        fonts,
+        statusBarHeight: profile.canvas.statusBarHeight,
+        defaultFont: board.defaultFont,
+        onPrint: () => {},
+    });
+    await runtime.prepare();
+    runtime.run(`
+        local d = alertUI("Увага", "Текст")
+        local n = 0
+        function lilka.update(dt) n = n + 1 if n >= 6 then util.exit() end end
+        function lilka.draw() d:draw() end
+    `);
+    const filled = [0, 1].map((index) => {
+        const view = new Uint16Array(memory.pixels, bufferOffset(index, W, H), W * H);
+        return view.reduce((n, value) => n + (value !== 0 ? 1 : 0), 0);
+    });
+    runtime.close();
+    ok(filled[0] > 0 && filled[1] > 0, `обидва буфери намальовані: ${filled.join(' і ')}`);
+    ok(filled[0] === filled[1], `буфери однакові: ${filled.join(' проти ')}`);
+}
+
 console.log(fails === 0 ? '✔ рантайм: усі перевірки пройдено' : `✖ рантайм: ${fails} перевірок не пройдено`);
 process.exit(fails ? 1 : 0);
