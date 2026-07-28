@@ -796,6 +796,9 @@ body {
 
 .row__name {
     appearance: none;
+    display: flex;
+    align-items: center;
+    gap: 7px;
     border: none;
     background: transparent;
     font: inherit;
@@ -804,7 +807,19 @@ body {
     cursor: pointer;
     color: var(--ink);
     overflow: hidden;
+    min-width: 0;
+}
+
+.row__name > span {
+    overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Піктограми прошивки — 24x24 пікселя, тож без згладжування при масштабі */
+.icon {
+    image-rendering: pixelated;
+    flex: 0 0 auto;
 }
 
 .row__size,

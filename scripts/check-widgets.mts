@@ -186,5 +186,20 @@ const H = board.boards.v2.display.height;
     ok(dialog.getValue().length > 0, 'курсор не застряг на порожній клітинці');
 }
 
+// 13. Файлові піктограми — з keira, розміром 24x24
+{
+    const { FILE_ICONS } = await import('../src/generated/icons.ts');
+    ok(FILE_ICONS.length === 8, `файлових піктограм ${FILE_ICONS.length}`);
+    for (const name of FILE_ICONS) {
+        const icon = KEYBOARD_ICONS[name];
+        ok(icon !== undefined, `${name}: піктограма є`);
+        if (!icon) continue;
+        ok(icon.width === 24 && icon.height === 24, `${name}: ${icon.width}x${icon.height}, очікується 24x24`);
+        ok(icon.pixels.length === 576, `${name}: ${icon.pixels.length} пікселів`);
+        // Чорний у прошивці — прозорий колір, тож піктограма не має бути суцільно чорною
+        ok(icon.pixels.some((pixel) => pixel !== 0), `${name}: не порожня`);
+    }
+}
+
 console.log(fails === 0 ? '✔ віджети: усі перевірки пройдено' : `✖ віджети: ${fails} перевірок не пройдено`);
 process.exit(fails ? 1 : 0);

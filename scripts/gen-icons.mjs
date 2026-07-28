@@ -12,8 +12,26 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
-const BASE = 'https://raw.githubusercontent.com/lilka-dev/sdk/main/lib/lilka/src/lilka/icons';
-const NAMES = ['shift', 'shifted', 'backspace', 'whitespace'];
+/**
+ * Піктограми беруться з двох місць прошивки:
+ *   - клавіатурні (20x20) — з SDK, їх малює `InputDialog`
+ *   - файлові (24x24) — з keira, їх показує файловий менеджер на пристрої
+ *
+ * Другі потрібні браузерному менеджеру: коли значок теки й `.lua` той самий,
+ * що на екрані Лілки, середовище виглядає продовженням пристрою, а не
+ * окремим інструментом.
+ */
+const SOURCES = [
+    {
+        base: 'https://raw.githubusercontent.com/lilka-dev/sdk/main/lib/lilka/src/lilka/icons',
+        names: ['shift', 'shifted', 'backspace', 'whitespace'],
+    },
+    {
+        base: 'https://raw.githubusercontent.com/lilka-dev/keira/main/src/apps/icons',
+        names: ['folder', 'lua', 'js', 'bin', 'app', 'music', 'settings', 'nes'],
+    },
+];
+const NAMES = SOURCES.flatMap((source) => source.names);
 
 const args = { src: null, out: 'src/generated/icons.ts' };
 for (let i = 2; i < process.argv.length; i++) {
@@ -49,11 +67,13 @@ function parseIcon(source, name) {
 }
 
 const icons = {};
-for (const name of NAMES) {
-    const source = args.src
-        ? await readFile(`${args.src}/${name}.h`, 'utf8')
-        : await (await fetch(`${BASE}/${name}.h`)).text();
-    icons[name] = parseIcon(source, name);
+for (const group of SOURCES) {
+    for (const name of group.names) {
+        const source = args.src
+            ? await readFile(`${args.src}/${name}.h`, 'utf8')
+            : await (await fetch(`${group.base}/${name}.h`)).text();
+        icons[name] = parseIcon(source, name);
+    }
 }
 
 const lines = NAMES.map((name) => {
@@ -72,7 +92,9 @@ await writeFile(
         `// Джерело: lilka-dev/sdk, lib/lilka/src/lilka/icons/*.h\n` +
         `// Піктограми екранної клавіатури, RGB565. Чорний — прозорий колір.\n\n` +
         `export interface IconData {\n    width: number;\n    height: number;\n    pixels: readonly number[];\n}\n\n` +
-        `export const KEYBOARD_ICONS: Readonly<Record<string, IconData>> = {\n${lines.join('\n')}\n};\n`,
+        `export const KEYBOARD_ICONS: Readonly<Record<string, IconData>> = {\n${lines.join('\n')}\n};\n\n` +
+        `/** Піктограми файлового менеджера, як на екрані Лілки. */\n` +
+        `export const FILE_ICONS = ['folder', 'lua', 'js', 'bin', 'app', 'music', 'settings', 'nes'] as const;\n`,
     'utf8',
 );
 

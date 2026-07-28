@@ -16,6 +16,7 @@
 import { basename, dirname, normalizePath } from '../emulator/vfs.ts';
 import { detectFormat } from '../emulator/image-loader.ts';
 import { inspectImage, PROBLEM_TEXT, type ImageInfo } from '../emulator/image-info.ts';
+import { iconElement } from './icons.ts';
 
 /** Корінь менеджера. У шляхах лишається `/sd`, бо так на залізі. */
 export const ROOT = '/sd';
@@ -576,7 +577,7 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
 
                 if (entry.isDirectory) {
                     box.classList.add('tile__box--folder');
-                    box.textContent = '📁';
+                    box.append(iconElement(entry.name, true, 34));
                 } else if (isImage && entry.data) {
                     const url = thumbnailUrl(entry.data, format);
                     objectUrls.push(url);
@@ -587,7 +588,7 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
                     box.append(image);
                 } else {
                     box.classList.add('tile__box--file');
-                    box.textContent = entry.name.endsWith('.lua') ? '{ }' : '📄';
+                    box.append(iconElement(entry.name, false, 34));
                 }
 
                 box.append(makeCheckbox(entry), makeDots(entry, info));
@@ -612,7 +613,10 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
                 const name = document.createElement('button');
                 name.type = 'button';
                 name.className = 'row__name';
-                name.textContent = entry.name;
+                name.append(iconElement(entry.name, entry.isDirectory, 18));
+                const label = document.createElement('span');
+                label.textContent = entry.name;
+                name.append(label);
                 name.addEventListener('click', () => activate(entry));
                 if (info?.problems.length) {
                     const warn = document.createElement('span');

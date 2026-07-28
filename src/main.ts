@@ -15,26 +15,19 @@ import { getBoard, keyBindings, DEFAULT_FONT } from './board/board.ts';
 import { Screen } from './emulator/screen.ts';
 import { Controller } from './emulator/controller.ts';
 import { DisplaySurface } from './emulator/surface.ts';
-import { preloadFonts, getLoadedFont } from './emulator/fonts.ts';
-import { TextRenderer } from './emulator/text.ts';
-import { drawTestCard } from './emulator/testcard.ts';
-import { drawImageTestCard, makeSprite } from './emulator/testcard-images.ts';
-import { Transform } from './emulator/transform.ts';
-import { color565 } from './emulator/color.ts';
+import { imageFromRgba } from './emulator/image-loader.ts';
+import splashUrl from './assets/splash.png?url';
 import { createShell } from './ui/shell.ts';
 import { createEditor, SAMPLE_CODE } from './ui/editor.ts';
 import { createFilesPanel, ROOT, type FileEntry } from './ui/files.ts';
 import { basename, dirname } from './emulator/vfs.ts';
 import { LuaHost } from './runtime/host.ts';
 import { loadAllFontJson } from './emulator/fonts.ts';
-import type { Font, FontJson } from './emulator/font.ts';
+import type { FontJson } from './emulator/font.ts';
 
 const board = getBoard();
 
-/** true — канва на весь екран; false — зі смугою статусбару, як у KeiraOS. */
-let fullscreen = true;
-
-let surface = new DisplaySurface(board.display.width, board.display.height, board.canvas.fullscreen);
+const surface = new DisplaySurface(board.display.width, board.display.height, board.canvas.fullscreen);
 const screen = new Screen(surface.display);
 const controller = new Controller(keyBindings(board));
 controller.attachKeyboard();
@@ -183,104 +176,38 @@ editor.onRun(() => {
 });
 editor.onStop(() => host.stop());
 
-// -------------------------------------------------------------- демо-сценарій
+// ----------------------------------------------------------------- заставка
 
-const WHITE = color565(255, 255, 255);
-const STATUSBAR = color565(24, 28, 40);
+/**
+ * Заставка Лілки — та сама, що показує прошивка при вмиканні.
+ *
+ * Картинка розпакована з `sdk/lib/lilka/src/lilka/default_splash.h`, де вона
+ * лежить у RLE-стисненому вигляді: байт-лічильник повторів, далі два байти
+ * кольору RGB565. Окремий скрипт-генератор тут зайвий — заставка не змінюється
+ * разом із прошивкою, тож достатньо готового PNG із цим поясненням поруч.
+ *
+ * Показується від завантаження сторінки до першого запуску програми.
+ */
+async function showSplash(): Promise<void> {
+    const response = await fetch(splashUrl);
+    const bitmap = await createImageBitmap(await response.blob());
 
-const TESTCARD_FONTS = ['5x7', '6x13', '10x20'];
-const MODES = ['geometry', 'images', 'sandbox'] as const;
-type Mode = (typeof MODES)[number];
-const MODE_TITLES: Record<Mode, string> = {
-    geometry: 'геометрія',
-    images: 'зображення',
-    sandbox: 'пісочниця',
-};
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    context.drawImage(bitmap, 0, 0);
 
-let mode: Mode = 'geometry';
-let fonts: Record<string, Font> = {};
-let x = board.canvas.fullscreen.width / 2;
-let y = board.canvas.fullscreen.height / 2;
-let angle = 0;
+    const pixels = context.getImageData(0, 0, bitmap.width, bitmap.height);
+    const image = imageFromRgba(pixels.data, bitmap.width, bitmap.height);
+    surface.display.drawImage(image, 0, 0);
+    screen.present(true);
+}
+
 let frames = 0;
 let fpsWindow = 0;
 let fps = 0;
-
-const sprite = makeSprite(color565(255, 0, 255));
-
-/** Перестворює поверхню при зміні режиму статусбару (`lilka.fullscreen`). */
-function rebuildSurface(): void {
-    const rect = fullscreen ? board.canvas.fullscreen : board.canvas.windowed;
-    surface = new DisplaySurface(board.display.width, board.display.height, rect);
-    screen.attach(surface.display);
-    if (!fullscreen) {
-        // Смуга статусбару малюється поза канвою програми — як у KeiraOS
-        surface.display.fillRect(0, 0, board.display.width, board.canvas.statusBarHeight, STATUSBAR);
-    }
-    x = Math.min(x, rect.width - 1);
-    y = Math.min(y, rect.height - 1);
-    drawCurrentCard();
-}
-
-function drawCurrentCard(): void {
-    const fb = surface.canvas;
-    if (mode === 'geometry') drawTestCard(fb, fonts);
-    else if (mode === 'images') drawImageTestCard(fb, fonts);
-    else fb.fillScreen(0);
-    surface.queueDraw();
-}
-
-function update(delta: number): void {
-    const state = controller.readState();
-
-    if (state.start.just_pressed) {
-        mode = MODES[(MODES.indexOf(mode) + 1) % MODES.length];
-        drawCurrentCard();
-        // друге малювання: через обмін буферів перший кадр після перемикання
-        // лишався б у другому буфері зі старим вмістом
-        drawCurrentCard();
-    }
-
-    if (state.select.just_pressed) {
-        fullscreen = !fullscreen;
-        rebuildSurface();
-        drawCurrentCard();
-    }
-
-    if (mode !== 'sandbox') return;
-
-    const speed = 90 * delta;
-    if (state.left.pressed) x -= speed;
-    if (state.right.pressed) x += speed;
-    if (state.up.pressed) y -= speed;
-    if (state.down.pressed) y += speed;
-    x = Math.max(0, Math.min(surface.canvas.width - 1, x));
-    y = Math.max(0, Math.min(surface.canvas.height - 1, y));
-
-    if (state.a.pressed) angle += 180 * delta;
-    if (state.b.pressed) angle -= 180 * delta;
-}
-
-function draw(): void {
-    if (mode !== 'sandbox') return;
-
-    const fb = surface.canvas;
-    fb.fillScreen(0);
-    fb.drawRect(0, 0, fb.width, fb.height, WHITE);
-
-    // обертання зображення навколо точки привʼязки, керується A / B
-    fb.drawImageTransformed(sprite, Math.round(x), Math.round(y), new Transform().rotate(Math.round(angle)));
-
-    const font = getLoadedFont(DEFAULT_FONT);
-    if (font) {
-        const text = new TextRenderer(fb, font);
-        text.setTextColor(WHITE, 0);
-        text.setCursor(4, 12);
-        text.print(`(${Math.round(x)}, ${Math.round(y)})  ${Math.round(angle) % 360}°`);
-    }
-
-    surface.queueDraw();
-}
 
 // ------------------------------------------------------------------ цикл кадрів
 
@@ -299,12 +226,8 @@ function frame(now: number): void {
         // прапорці just_* споживає Lua, але їх треба скидати й тут,
         // інакше після зупинки програми накопичиться черга натискань
         controller.readState();
-    } else {
-        update(delta);
-        draw();
-        surface.present();
+        screen.present();
     }
-    screen.present();
 
     frames++;
     fpsWindow += delta;
@@ -315,9 +238,7 @@ function frame(now: number): void {
         hud.textContent = luaRunning
             ? `${fps} к/с виводу · кадр Lua ${host.frame} · пропущено ${host.skippedFrames} · ` +
               `масштаб ${screen.currentScale}×`
-            : `${fps} к/с · масштаб ${screen.currentScale}× · кадр ${surface.frame} · ` +
-              `${MODE_TITLES[mode]}${fullscreen ? '' : ' · статусбар'} · ` +
-              `START — режим, SELECT — статусбар, A/B — обертання`;
+            : `масштаб ${screen.currentScale}×`;
     }
     shell.syncButtons();
 
@@ -327,21 +248,10 @@ function frame(now: number): void {
 window.addEventListener('resize', () => shell.layout());
 shell.layout();
 
-// Шрифти вантажаться окремими чанками, тож перші кадри малюються без них,
-// а після завантаження карта перемальовується.
-drawCurrentCard();
-surface.present();
-screen.present(true);
+void showSplash();
 requestAnimationFrame(frame);
 
 void (async () => {
-    await preloadFonts([...new Set([...TESTCARD_FONTS, DEFAULT_FONT])]);
-    fonts = Object.fromEntries(
-        TESTCARD_FONTS.map((name) => [name, getLoadedFont(name)]).filter(([, f]) => f),
-    ) as Record<string, Font>;
-    drawCurrentCard();
-    drawCurrentCard();
-
     // Рантайм піднімається окремо: без SharedArrayBuffer він не запуститься,
     // і про це краще сказати прямо, ніж мовчки лишити кнопку неактивною.
     try {

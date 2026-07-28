@@ -158,7 +158,7 @@ Lua-програма без `display.fill_screen` побачить не слід
 | `fonts/*.json` — 9 шрифтів із бітмапами глифів | `gen-fonts.mjs` | `u8g2/csrc/u8g2_fonts.c` |
 | `fmath-tables.ts` — sin360, sin32 | `gen-fmath.mjs` | `sdk/lilka/fmath.cpp` |
 | `notes.ts` — 97 нот | `gen-notes.mjs` | `sdk/lilka/buzzer.h` |
-| `icons.ts` — 4 піктограми клавіатури | `gen-icons.mjs` | `sdk/lilka/icons/*.h` |
+| `icons.ts` — 12 піктограм: клавіатура й файли | `gen-icons.mjs` | `sdk/lilka/icons/*.h`, `keira/src/apps/icons/*.h` |
 | `coverage.json` — звіт покриття API | `gen-coverage.mts` | запуск справжнього рантайму |
 
 Усе це лежить у `src/generated/` і **не редагується вручну**. Змінилася
