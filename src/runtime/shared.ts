@@ -56,10 +56,22 @@ export interface SharedMemory {
 }
 
 export function createSharedMemory(maxWidth: number, maxHeight: number): SharedMemory {
-    if (typeof SharedArrayBuffer === 'undefined') {
+    /*
+     * Правильна ознака — саме `crossOriginIsolated`, а не наявність
+     * SharedArrayBuffer. У деяких браузерах конструктор існує, але без
+     * ізоляції передати буфер у воркер не вийде, і помилка спливе пізніше й
+     * у незрозумілому місці.
+     */
+    // У браузері ознака ізоляції обов'язкова; під Node її не існує, і там
+    // спільна пам'ять доступна без жодних заголовків
+    const inBrowser = typeof window !== 'undefined';
+    if (typeof SharedArrayBuffer === 'undefined' || (inBrowser && !globalThis.crossOriginIsolated)) {
         throw new Error(
-            'SharedArrayBuffer недоступний. Потрібні заголовки COOP/COEP — ' +
-                'у продакшені їх підставляє coi-serviceworker, локально їх видає dev-сервер Vite.',
+            'Цей браузер не дав спільної пам\'яті, тож Lua запустити не вдалося.\n' +
+                'Потрібні заголовки COOP/COEP: у продакшені їх підставляє coi-serviceworker, ' +
+                'локально — dev-сервер Vite.\n' +
+                'Найнадійніше працює Chrome. Спробуйте також перезавантажити сторінку: ' +
+                'на першому візиті service worker ще не встиг стати до роботи.',
         );
     }
     const control = new Int32Array(new SharedArrayBuffer(CTRL_LENGTH * 4));

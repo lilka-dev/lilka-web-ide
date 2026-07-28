@@ -13,22 +13,17 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 /**
- * Піктограми беруться з двох місць прошивки:
- *   - клавіатурні (20x20) — з SDK, їх малює `InputDialog`
- *   - файлові (24x24) — з keira, їх показує файловий менеджер на пристрої
+ * Клавіатурні піктограми (20x20) з SDK — їх малює `InputDialog` на екрані
+ * Лілки, тож вони мусять збігатися піксель у піксель.
  *
- * Другі потрібні браузерному менеджеру: коли значок теки й `.lua` той самий,
- * що на екрані Лілки, середовище виглядає продовженням пристрою, а не
- * окремим інструментом.
+ * Файлові піктограми менеджера сюди НЕ входять: у прошивці вони теж растрові
+ * й розраховані на 24 пікселі, а в браузері при збільшенні розсипаються. У
+ * менеджері вони векторні, див. `src/ui/icons.ts`.
  */
 const SOURCES = [
     {
         base: 'https://raw.githubusercontent.com/lilka-dev/sdk/main/lib/lilka/src/lilka/icons',
         names: ['shift', 'shifted', 'backspace', 'whitespace'],
-    },
-    {
-        base: 'https://raw.githubusercontent.com/lilka-dev/keira/main/src/apps/icons',
-        names: ['folder', 'lua', 'js', 'bin', 'app', 'music', 'settings', 'nes'],
     },
 ];
 const NAMES = SOURCES.flatMap((source) => source.names);
@@ -92,9 +87,7 @@ await writeFile(
         `// Джерело: lilka-dev/sdk, lib/lilka/src/lilka/icons/*.h\n` +
         `// Піктограми екранної клавіатури, RGB565. Чорний — прозорий колір.\n\n` +
         `export interface IconData {\n    width: number;\n    height: number;\n    pixels: readonly number[];\n}\n\n` +
-        `export const KEYBOARD_ICONS: Readonly<Record<string, IconData>> = {\n${lines.join('\n')}\n};\n\n` +
-        `/** Піктограми файлового менеджера, як на екрані Лілки. */\n` +
-        `export const FILE_ICONS = ['folder', 'lua', 'js', 'bin', 'app', 'music', 'settings', 'nes'] as const;\n`,
+        `export const KEYBOARD_ICONS: Readonly<Record<string, IconData>> = {\n${lines.join('\n')}\n};\n`,
     'utf8',
 );
 

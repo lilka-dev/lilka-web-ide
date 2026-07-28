@@ -16,6 +16,9 @@ import { Screen } from './emulator/screen.ts';
 import { Controller } from './emulator/controller.ts';
 import { DisplaySurface } from './emulator/surface.ts';
 import { imageFromRgba } from './emulator/image-loader.ts';
+import { color565 } from './emulator/color.ts';
+import { TextRenderer } from './emulator/text.ts';
+import { loadFont, getLoadedFont } from './emulator/fonts.ts';
 import splashUrl from './assets/splash.png?url';
 import { createShell } from './ui/shell.ts';
 import { createEditor, SAMPLE_CODE } from './ui/editor.ts';
@@ -205,6 +208,26 @@ async function showSplash(): Promise<void> {
     screen.present(true);
 }
 
+/** Малює на екрані пристрою причину, чому Lua не запустилася. */
+function showFailure(): void {
+    const font = getLoadedFont('6x13');
+    if (!font) return;
+
+    const fb = surface.display;
+    fb.fillScreen(color565(24, 28, 40));
+    const text = new TextRenderer(fb, font);
+    text.setTextColor(color565(255, 210, 80));
+    text.setTextBound(10, 10, fb.width - 20, fb.height - 20);
+    text.setCursor(10, 30);
+    text.write('Lua не запустилася');
+
+    text.setTextColor(color565(200, 210, 220));
+    text.setCursor(10, 60);
+    text.write('Браузер не дав спільної пам\'яті.\nНайнадійніше працює Chrome.\n\nСпробуйте перезавантажити\nсторінку — можливо, service\nworker ще не встиг стати\nдо роботи.');
+
+    screen.present(true);
+}
+
 let frames = 0;
 let fpsWindow = 0;
 let fps = 0;
@@ -255,6 +278,8 @@ void (async () => {
     // Рантайм піднімається окремо: без SharedArrayBuffer він не запуститься,
     // і про це краще сказати прямо, ніж мовчки лишити кнопку неактивною.
     try {
+        // Шрифт потрібен ще до рантайму — щоб було чим написати про помилку
+        await loadFont('6x13');
         fontJson = await loadAllFontJson();
         await host.start(fontJson);
         await host.restore();
@@ -265,8 +290,12 @@ void (async () => {
         }
         refreshFiles();
     } catch (error) {
-        editor.print(error instanceof Error ? error.message : String(error), 'err');
-        editor.setState('рантайм недоступний', false);
+        // Повідомлення має бути на екрані пристрою, а не лише в консолі:
+        // інакше заставка виглядає як зависання, і причина лишається невідомою
+        const message = error instanceof Error ? error.message : String(error);
+        editor.print(message, 'err');
+        editor.setState('Lua не запустилася', false);
+        showFailure();
     }
 })();
 

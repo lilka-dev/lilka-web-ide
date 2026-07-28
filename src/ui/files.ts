@@ -16,7 +16,7 @@
 import { basename, dirname, normalizePath } from '../emulator/vfs.ts';
 import { detectFormat } from '../emulator/image-loader.ts';
 import { inspectImage, PROBLEM_TEXT, type ImageInfo } from '../emulator/image-info.ts';
-import { iconElement } from './icons.ts';
+import { fileIcon, iconElement } from './icons.ts';
 
 /** Корінь менеджера. У шляхах лишається `/sd`, бо так на залізі. */
 export const ROOT = '/sd';
@@ -113,11 +113,11 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
     viewToggle.className = 'files__view';
     const gridButton = document.createElement('button');
     gridButton.type = 'button';
-    gridButton.textContent = '▦';
+    gridButton.append(iconElement('grid', 15));
     gridButton.title = 'Плитка';
     const listButton = document.createElement('button');
     listButton.type = 'button';
-    listButton.textContent = '☰';
+    listButton.append(iconElement('list', 15));
     listButton.title = 'Рядки';
     for (const [button, mode] of [
         [gridButton, 'grid'],
@@ -577,7 +577,7 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
 
                 if (entry.isDirectory) {
                     box.classList.add('tile__box--folder');
-                    box.append(iconElement(entry.name, true, 34));
+                    box.append(fileIcon(entry.name, true, 34));
                 } else if (isImage && entry.data) {
                     const url = thumbnailUrl(entry.data, format);
                     objectUrls.push(url);
@@ -588,7 +588,7 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
                     box.append(image);
                 } else {
                     box.classList.add('tile__box--file');
-                    box.append(iconElement(entry.name, false, 34));
+                    box.append(fileIcon(entry.name, false, 34));
                 }
 
                 box.append(makeCheckbox(entry), makeDots(entry, info));
@@ -613,7 +613,7 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
                 const name = document.createElement('button');
                 name.type = 'button';
                 name.className = 'row__name';
-                name.append(iconElement(entry.name, entry.isDirectory, 18));
+                name.append(fileIcon(entry.name, entry.isDirectory, 18));
                 const label = document.createElement('span');
                 label.textContent = entry.name;
                 name.append(label);

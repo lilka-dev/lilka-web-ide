@@ -74,7 +74,12 @@ body {
      * помістився в масштабі 2x (560 px). Проміжних значень немає: дробовий
      * масштаб розмиває піксель-арт, тож ширина або під 1x, або під 2x.
      */
-    grid-template-columns: minmax(300px, 620px) minmax(360px, 1fr);
+    /*
+     * 620 px ліворуч давало рівно 560 px під екран — межу для масштабу 2x,
+     * і через округлення він падав до 1x. Із запасом до 680 масштаб стабільно
+     * подвійний, а це вчетверо більше пікселів на екрані Лілки.
+     */
+    grid-template-columns: minmax(300px, 680px) minmax(340px, 1fr);
     align-content: start;
     gap: 16px;
     padding: 16px;
@@ -542,8 +547,10 @@ body {
     background: transparent;
     color: var(--muted);
     font-size: 14px;
-    padding: 7px 10px;
+    padding: 7px 9px;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
 }
 
 .files__view button.files__view--on {
@@ -816,10 +823,10 @@ body {
     white-space: nowrap;
 }
 
-/* Піктограми прошивки — 24x24 пікселя, тож без згладжування при масштабі */
+/* Піктограми векторні, тож жодного pixelated — вони чіткі на будь-якому розмірі */
 .icon {
-    image-rendering: pixelated;
     flex: 0 0 auto;
+    display: block;
 }
 
 .row__size,
