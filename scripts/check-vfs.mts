@@ -12,6 +12,7 @@ import { Vfs, joinPath, normalizePath, MOUNT_POINTS } from '../src/emulator/vfs.
 import { loadImageBMP, detectFormat, imageFromRgba } from '../src/emulator/image-loader.ts';
 import { color565 } from '../src/emulator/color.ts';
 import { NO_TRANSPARENT_COLOR } from '../src/emulator/image.ts';
+import { inspectImage } from '../src/emulator/image-info.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 let fails = 0;
@@ -183,6 +184,76 @@ const ok = (cond: boolean, msg: string) => {
     const image = loadImageBMP(bytes);
     ok(image.pivotX === 0 && image.pivotY === 0, 'pivot за замовчуванням 0,0');
     ok(image.transparentColor === NO_TRANSPARENT_COLOR, 'прозорого кольору за замовчуванням немає');
+}
+
+// 13. Переміщення теки переносить увесь вміст
+{
+    const vfs = new Vfs();
+    vfs.write('/sd/ігри/кіт/main.lua', new Uint8Array([1]));
+    vfs.write('/sd/ігри/кіт/cat.bmp', new Uint8Array([2]));
+    ok(vfs.movePath('/sd/ігри/кіт', '/sd/кіт'), 'тека переміщується');
+    ok(vfs.exists('/sd/кіт/main.lua') && vfs.exists('/sd/кіт/cat.bmp'), 'вміст переїхав');
+    ok(!vfs.exists('/sd/ігри/кіт/main.lua'), 'на старому місці порожньо');
+}
+
+// 14. Тека не може переїхати сама в себе
+{
+    const vfs = new Vfs();
+    vfs.write('/sd/ігри/рівні/a.txt', new Uint8Array([1]));
+    ok(!vfs.movePath('/sd/ігри', '/sd/ігри/рівні/ігри'), 'переміщення в себе відхилено');
+    ok(vfs.exists('/sd/ігри/рівні/a.txt'), 'вміст на місці після відмови');
+}
+
+// 15. Перелік тек для вікна переміщення
+{
+    const vfs = new Vfs();
+    vfs.mkdir('/sd/ігри');
+    vfs.mkdir('/sd/ігри/кіт');
+    vfs.write('/sd/герой.png', new Uint8Array([1]));
+    const dirs = vfs.allDirectories('/sd');
+    ok(dirs.join(',') === '/sd/ігри,/sd/ігри/кіт', `лише теки: ${dirs.join(',')}`);
+}
+
+// 16. Розпізнавання пасток прошивки в картинках
+{
+    const makeBmp = (width: number, height: number, bpp: number, alpha?: number[]) => {
+        const rowSize = Math.ceil((width * (bpp >> 3)) / 4) * 4;
+        const bytes = new Uint8Array(138 + rowSize * Math.abs(height));
+        bytes[0] = 0x42;
+        bytes[1] = 0x4d;
+        const view = new DataView(bytes.buffer);
+        view.setUint32(10, 138, true);
+        view.setUint32(18, width, true);
+        view.setInt32(22, height, true);
+        view.setUint16(28, bpp, true);
+        if (alpha) {
+            for (let i = 0; i < alpha.length; i++) bytes[138 + i * 4 + 3] = alpha[i];
+        }
+        return bytes;
+    };
+
+    ok(inspectImage(makeBmp(2, -2, 32))?.problems.includes('top-down'), 'BMP «догори низом» розпізнано');
+    ok(inspectImage(makeBmp(2000, 10, 32))?.problems.includes('too-large'), 'завелика картинка розпізнана');
+    ok(inspectImage(makeBmp(3, 2, 24))?.problems.includes('row-padding'), 'ширина не кратна 4 розпізнана');
+
+    // Альфа «використовується» лише коли є і прозорі, і непрозорі пікселі:
+    // суцільні нулі — це просто невикористаний канал, і переводити такий файл
+    // у PNG не можна, бо він став би цілком невидимим
+    ok(
+        inspectImage(makeBmp(2, 2, 32, [0, 255, 255, 255]))?.problems.includes('alpha-lost'),
+        'справжня прозорість розпізнана',
+    );
+    ok(
+        !inspectImage(makeBmp(2, 2, 32, [0, 0, 0, 0]))?.problems.includes('alpha-lost'),
+        'суцільні нулі в альфі не вважаються прозорістю',
+    );
+}
+
+// 17. Справжній BMP із прикладу не має жодної проблеми
+{
+    const info = inspectImage(new Uint8Array(readFileSync(join(root, 'src/examples/cat/no.bmp'))));
+    ok(info?.problems.length === 0, `cat/no.bmp без зауважень: ${info?.problems.join(',')}`);
+    ok(info?.width === 280 && info?.height === 240, 'розміри визначено правильно');
 }
 
 console.log(fails === 0 ? '✔ файлова система: усі перевірки пройдено' : `✖ файлова система: ${fails} перевірок не пройдено`);

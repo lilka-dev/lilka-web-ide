@@ -493,112 +493,487 @@ body {
     user-select: text;
 }
 
-/* ------------------------------------------------------ панель файлів */
+/* ------------------------------------------------- файловий менеджер ------ */
 
 .files {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 10px 12px;
+    gap: 0;
     background: var(--card);
     border: 1px solid var(--edge);
     border-radius: 10px;
+    overflow: hidden;
     transition: border-color 80ms linear, background 80ms linear;
 }
 
-/* під час перетягування межа підсвічується — інакше незрозуміло, куди кидати */
+/* Підсвічується вся область: при перетягуванні ззовні неважливо, куди саме
+   кинути — файл лягає в поточну теку */
 .files--over {
     border-color: var(--teal);
     background: #f2fbfa;
 }
 
-.files__head {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    font-size: 13px;
-}
-
-.files__hint {
-    margin-left: auto;
-    color: var(--muted);
-    font-size: 11px;
-}
-
-.files__hint--error {
-    color: #c0392b;
-}
-
-.files__list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    max-height: 220px;
-    overflow: auto;
-}
-
-.files__mount {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    color: var(--teal);
-    font-family: ui-monospace, Menlo, Consolas, monospace;
-    font-size: 12px;
-}
-
-.files__mount em {
-    font-style: normal;
-    color: var(--muted);
-    font-family: inherit;
-    font-size: 10px;
-}
-
-.files__empty {
-    padding: 2px 0 2px 12px;
-    color: #a9b4af;
-    font-size: 11px;
-}
-
-.files__row {
+.files__bar {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 3px 0 3px 12px;
-    font-size: 12px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--edge);
 }
 
-.files__name {
-    font-family: ui-monospace, Menlo, Consolas, monospace;
+.files__add,
+.files__bar .button {
+    min-height: 34px;
+    padding: 6px 12px;
+    font-size: 13px;
 }
 
-.files__dir {
-    color: var(--muted);
-    font-size: 11px;
-    font-family: ui-monospace, Menlo, Consolas, monospace;
-}
-
-.files__size {
+.files__view {
     margin-left: auto;
-    color: var(--muted);
-    font-variant-numeric: tabular-nums;
-    font-size: 11px;
+    display: inline-flex;
+    border: 1px solid var(--edge);
+    border-radius: 8px;
+    overflow: hidden;
 }
 
-.files__remove {
+.files__view button {
     appearance: none;
-    width: 20px;
-    height: 20px;
-    padding: 0;
     border: none;
-    border-radius: 4px;
     background: transparent;
     color: var(--muted);
-    font-size: 15px;
-    line-height: 1;
+    font-size: 14px;
+    padding: 7px 10px;
     cursor: pointer;
 }
 
-.files__remove:hover {
+.files__view button.files__view--on {
+    background: var(--teal);
+    color: #fff;
+}
+
+.files__dots {
+    min-height: 34px;
+    padding: 6px 10px;
+}
+
+.files__crumbs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--edge);
+    font-size: 13px;
+}
+
+/* Смуга вибору ЗАМІНЮЄ крихти, а не додається над ними — щоб панель не росла */
+.files__crumbs--selection {
+    background: #e9f4f2;
+}
+
+.files__selection-actions {
+    margin-left: auto;
+    display: inline-flex;
+    gap: 6px;
+}
+
+.files__selection-actions button {
+    appearance: none;
+    font: inherit;
+    font-size: 12px;
+    background: var(--card);
+    border: 1px solid var(--pill-edge);
+    border-radius: 7px;
+    padding: 5px 11px;
+    cursor: pointer;
+}
+
+.files__selection-actions .files__danger {
+    color: #b03a2e;
+    border-color: #e3b5ae;
+}
+
+.files__selection-actions .files__plain {
+    border-color: transparent;
+    background: transparent;
+    color: var(--muted);
+}
+
+.files__back,
+.files__crumb {
+    appearance: none;
+    font: inherit;
+    font-size: 13px;
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: var(--teal);
+    cursor: pointer;
+}
+
+.files__back:disabled,
+.files__crumb:disabled {
+    color: var(--ink);
+    cursor: default;
+}
+
+.files__back {
+    font-size: 16px;
+    margin-right: 2px;
+}
+
+.files__back:disabled {
+    color: #c3d4cc;
+}
+
+.files__sep {
+    color: #9cb3a8;
+}
+
+.files__summary {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.files__content {
+    padding: 12px;
+    max-height: 320px;
+    overflow: auto;
+}
+
+.files__content--grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+    gap: 10px;
+}
+
+.files__content--list {
+    display: flex;
+    flex-direction: column;
+}
+
+.files__empty {
+    grid-column: 1 / -1;
+    padding: 26px 12px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    border: 1.5px dashed var(--edge);
+    border-radius: 8px;
+}
+
+/* --- плитка --- */
+
+.tile__box {
+    position: relative;
+    height: 76px;
+    border: 1px solid var(--edge);
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+    display: grid;
+    place-items: center;
+    font-size: 26px;
+    cursor: pointer;
+}
+
+.tile__box--folder {
+    background: #f7faf9;
+}
+
+.tile__box--file {
+    background: #eef4f1;
+    font-size: 18px;
+    color: var(--muted);
+}
+
+/* Шахівниця під PNG — щоб прозорість була помітна без здогадів */
+.tile__box--alpha {
+    background: repeating-conic-gradient(#eee 0% 25%, #fff 0% 50%) 50% / 10px 10px;
+}
+
+.tile__box img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    image-rendering: pixelated;
+}
+
+.tile__name {
+    margin-top: 5px;
+    font-size: 12px;
+    text-align: center;
+    word-break: break-all;
+}
+
+.tile__warn,
+.row__warn {
+    display: inline-grid;
+    place-items: center;
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    background: var(--amber);
+    color: var(--amber-ink);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.tile__warn {
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+}
+
+.row__warn {
+    margin-left: 5px;
+    vertical-align: -3px;
+}
+
+/* Галочка й «…» видно ЗАВЖДИ, а не при наведенні: пальцем навести неможливо */
+.pick,
+.dots {
+    appearance: none;
+    position: absolute;
+    top: 4px;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    font: inherit;
+}
+
+.pick {
+    left: 4px;
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid var(--pill-edge);
+    border-radius: 4px;
+    background: #fff;
+    font-size: 11px;
+    color: transparent;
+    padding: 0;
+}
+
+.pick--on {
+    background: var(--teal);
+    border-color: var(--teal);
+    color: #fff;
+}
+
+.dots {
+    right: 4px;
+    width: 19px;
+    height: 19px;
+    border: none;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+}
+
+/* --- рядки --- */
+
+.row {
+    display: grid;
+    grid-template-columns: 22px 1fr 84px 76px 26px;
+    gap: 8px;
+    align-items: center;
+    padding: 6px 2px;
+    border-bottom: 1px solid #f2f7f4;
+    font-size: 13px;
+}
+
+.row--picked {
+    background: #f1f8f6;
+}
+
+.row .pick,
+.row .dots {
+    position: static;
+}
+
+.row__name {
+    appearance: none;
+    border: none;
+    background: transparent;
+    font: inherit;
+    text-align: left;
+    padding: 0;
+    cursor: pointer;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.row__size,
+.row__kind {
+    color: var(--muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* --- смуга попередження --- */
+
+.files__notice {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin: 0 12px 12px;
+    padding: 9px 11px;
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.files__notice--warn {
+    background: #faeeda;
+    color: #633806;
+}
+
+.files__notice--error {
     background: #fdecea;
-    color: #c0392b;
+    color: #922b21;
+}
+
+.files__notice span {
+    flex: 1;
+}
+
+.files__notice-action {
+    appearance: none;
+    font: inherit;
+    font-size: 12px;
+    background: #fff;
+    border: 1px solid #e8c89a;
+    color: #854f0b;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+/* --- меню --- */
+
+.menu {
+    position: absolute;
+    z-index: 40;
+    min-width: 208px;
+    background: #fff;
+    border: 1px solid var(--pill-edge);
+    border-radius: 9px;
+    box-shadow: 0 6px 20px rgba(22, 48, 42, 0.14);
+    overflow: hidden;
+    padding: 0;
+}
+
+.menu__item {
+    appearance: none;
+    display: block;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    font-size: 13px;
+    background: transparent;
+    border: none;
+    padding: 9px 12px;
+    cursor: pointer;
+    color: var(--ink);
+}
+
+.menu__item:hover {
+    background: #f2f7f4;
+}
+
+.menu__item--accent {
+    color: var(--teal);
+}
+
+.menu__item--fix {
+    background: #fdf6e9;
+    color: #854f0b;
+}
+
+.menu__item--danger {
+    color: #b03a2e;
+    border-top: 1px solid #e4ede8;
+}
+
+/* --- вікно переміщення --- */
+
+.overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: rgba(22, 48, 42, 0.28);
+    display: grid;
+    place-items: center;
+    padding: 20px;
+}
+
+.dialog {
+    width: 100%;
+    max-width: 380px;
+    background: #fff;
+    border-radius: 11px;
+    box-shadow: 0 12px 34px rgba(22, 48, 42, 0.2);
+    overflow: hidden;
+}
+
+.dialog__title {
+    padding: 14px 16px 0;
+    font-size: 15px;
+}
+
+.dialog__hint {
+    padding: 4px 16px 12px;
+    font-size: 12px;
+    color: var(--muted);
+    border-bottom: 1px solid var(--edge);
+}
+
+.dialog__list {
+    max-height: 220px;
+    overflow: auto;
+    padding: 6px 0;
+}
+
+.dialog__row {
+    appearance: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    font-size: 13px;
+    background: transparent;
+    border: none;
+    padding: 8px 14px;
+    cursor: pointer;
+}
+
+.dialog__row:disabled {
+    color: var(--muted);
+    cursor: default;
+}
+
+.dialog__row em {
+    margin-left: auto;
+    font-style: normal;
+    font-size: 11px;
+    color: var(--muted);
+}
+
+.dialog__row--picked {
+    background: #e9f4f2;
+}
+
+.dialog__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 11px 14px;
+    border-top: 1px solid var(--edge);
 }

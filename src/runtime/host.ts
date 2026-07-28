@@ -160,9 +160,59 @@ export class LuaHost {
         this.events.onFilesChange?.();
     }
 
+    /** Видаляє файл або теку з усім вмістом. */
     removeFile(path: string): void {
+        const info = this.vfs.stat(path);
+        if (info?.isDirectory) {
+            for (const file of this.vfs.allFiles()) {
+                if (file.path.startsWith(path + '/')) {
+                    this.vfs.remove(file.path);
+                    this.decodedPng.delete(file.path);
+                }
+            }
+        }
         this.vfs.remove(path);
         this.decodedPng.delete(path);
+        void this.persist();
+        this.events.onFilesChange?.();
+    }
+
+    mkdir(path: string): void {
+        this.vfs.mkdir(path);
+        void this.persist();
+        this.events.onFilesChange?.();
+    }
+
+    /** Перейменування й переміщення — одна операція, як у файловій системі. */
+    movePath(from: string, to: string): boolean {
+        const decoded = this.decodedPng.get(from);
+        const moved = this.vfs.movePath(from, to);
+        if (moved && decoded) {
+            this.decodedPng.delete(from);
+            this.decodedPng.set(to, decoded);
+        }
+        if (moved) {
+            void this.persist();
+            this.events.onFilesChange?.();
+        }
+        return moved;
+    }
+
+    duplicateFile(path: string): void {
+        const data = this.vfs.read(path);
+        if (!data) return;
+        const dot = path.lastIndexOf('.');
+        const base = dot > 0 ? path.slice(0, dot) : path;
+        const extension = dot > 0 ? path.slice(dot) : '';
+        let candidate = `${base} (2)${extension}`;
+        let index = 2;
+        while (this.vfs.exists(candidate)) {
+            index++;
+            candidate = `${base} (${index})${extension}`;
+        }
+        this.vfs.write(candidate, data);
+        const decoded = this.decodedPng.get(path);
+        if (decoded) this.decodedPng.set(candidate, decoded);
         void this.persist();
         this.events.onFilesChange?.();
     }

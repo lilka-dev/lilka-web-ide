@@ -265,6 +265,54 @@ export class Vfs {
         return target.fs.list(target.rest);
     }
 
+    /**
+     * Переміщення або перейменування — і файлу, і теки.
+     *
+     * Для теки переносяться всі вкладені записи: у пласкому сховищі це означає
+     * переписати ключі з відповідним префіксом.
+     */
+    movePath(from: string, to: string): boolean {
+        const source = normalizePath(from);
+        const destination = normalizePath(to);
+        if (source === destination) return true;
+
+        const info = this.stat(source);
+        if (!info) return false;
+
+        if (!info.isDirectory) return this.rename(source, destination);
+
+        // Тека не може переїхати сама в себе
+        if (destination.startsWith(source + '/')) return false;
+
+        const prefix = source + '/';
+        for (const file of this.allFiles()) {
+            if (!file.path.startsWith(prefix)) continue;
+            const data = this.read(file.path);
+            if (!data) continue;
+            this.write(destination + file.path.slice(source.length), data);
+            this.remove(file.path);
+        }
+        this.mkdir(destination);
+        this.remove(source);
+        return true;
+    }
+
+    /** Перелік усіх тек — для вікна переміщення. */
+    allDirectories(root: string): string[] {
+        const out: string[] = [];
+        const walk = (path: string) => {
+            for (const name of this.list(path)) {
+                const child = path === '/' ? '/' + name : path + '/' + name;
+                if (this.stat(child)?.isDirectory) {
+                    out.push(child);
+                    walk(child);
+                }
+            }
+        };
+        walk(normalizePath(root));
+        return out;
+    }
+
     /** Усі файли всіх монтувань — для панелі файлів і для експорту. */
     allFiles(): Array<{ path: string; size: number }> {
         const out: Array<{ path: string; size: number }> = [];
