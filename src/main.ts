@@ -45,7 +45,7 @@ if (!app) throw new Error('Не знайдено #app');
 const deviceColumn = document.createElement('div');
 deviceColumn.className = 'column';
 const editorColumn = document.createElement('div');
-editorColumn.className = 'column';
+editorColumn.className = 'column column--editor';
 app.append(deviceColumn, editorColumn);
 
 const shell = createShell(board, controller, screen);
@@ -62,8 +62,11 @@ editorColumn.append(editor.root);
 
 let fontJson: Record<string, FontJson> = {};
 
+// Панель файлів живе під пристроєм, а не під редактором: ліворуч під
+// намальованою Лілкою лишався порожній простір, а праворуч кожен піксель
+// потрібен коду. Плюс файли — це карта пам'яті, тобто частина пристрою.
 const files = createFilesPanel();
-editorColumn.append(files.root);
+deviceColumn.append(files.root);
 
 /** Тека, у якій «лежить» поточна програма — від неї рахуються відносні шляхи. */
 let scriptDir = '/sd';
