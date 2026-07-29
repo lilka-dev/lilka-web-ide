@@ -217,8 +217,21 @@ export class LuaHost {
         this.events.onFilesChange?.();
     }
 
-    run(code: string, name = 'main.lua', scriptPath = '/sd/main.lua'): void {
-        if (!this.worker || this.state !== 'ready') return;
+    /**
+     * Повертає true, якщо запуск справді почався.
+     *
+     * Раніше тут стояло мовчазне `return` — і коли рантайм не піднявся,
+     * натискання «Запустити» не давало ні результату, ні пояснення.
+     */
+    run(code: string, name = 'main.lua', scriptPath = '/sd/main.lua'): boolean {
+        if (!this.worker) {
+            this.events.onError('Lua не запущена: фоновий потік не створено.');
+            return false;
+        }
+        if (this.state !== 'ready') {
+            this.events.onError(`Lua ще не готова до запуску. Поточний стан: ${this.state}.`);
+            return false;
+        }
         const control = this.memory!.control;
         Atomics.store(control, CTRL.FRAME, 0);
         Atomics.store(control, CTRL.SKIPPED, 0);
@@ -235,6 +248,7 @@ export class LuaHost {
             files: this.vfs.allFiles().map((entry) => [entry.path, this.vfs.read(entry.path)!] as [string, Uint8Array]),
             decodedPng: [...this.decodedPng.entries()],
         });
+        return true;
     }
 
     /** М'яка зупинка: воркер вийде з циклу на наступній ітерації. */

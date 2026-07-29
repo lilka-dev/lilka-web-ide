@@ -10,6 +10,25 @@
             у public/ і підключений звичайним тегом, а не через import.
             На першому візиті сторінка один раз перезавантажиться.
         -->
+        <script>
+            /*
+             * Типово coi-serviceworker обирає режим так:
+             *     coepCredentialless: () => !(window.chrome || window.netscape)
+             *
+             * У Safari немає ні `window.chrome`, ні `window.netscape`, тож умова
+             * дає true — і сторінка отримує `COEP: credentialless`. Але це
+             * значення розуміють лише браузери на Chromium. Safari його
+             * ігнорує, ізоляція не вмикається, спільної пам'яті немає, і Lua
+             * не запускається взагалі.
+             *
+             * `require-corp` розуміють усі. Він суворіший: кожен сторонній
+             * ресурс мусив би дозволити вбудовування. Нам це не заважає, бо
+             * усе — код, шрифти, wasm, картинки — лежить на тому самому сайті.
+             */
+            window.coi = {
+                coepCredentialless: () => false,
+            };
+        </script>
         <script src="./coi-serviceworker.js"></script>
     </head>
     <body>

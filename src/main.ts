@@ -169,14 +169,30 @@ editor.onExample((example) => {
     })();
 });
 
-editor.onRun(() => {
+editor.onRun(() => void runEditorCode());
+
+/**
+ * Спершу зберегти файл, і лише тоді запускати.
+ *
+ * Раніше обидві дії йшли одночасно, тож воркер міг отримати вміст карти без
+ * щойно збереженої програми. Плюс `main.lua` оновлювався навіть тоді, коли
+ * запуск не відбувався — і виглядало, ніби програма пішла, хоч насправді ні.
+ */
+async function runEditorCode(): Promise<void> {
     editor.clearConsole();
+
+    const code = editor.getCode();
+    const path = `${scriptDir}/main.lua`;
+
     surface.display.fillScreen(0);
-    // Код зберігається у main.lua поточної теки — саме тому програма завжди
-    // лежить поруч зі своїми картинками
-    void host.addFile(`${scriptDir}/main.lua`, new TextEncoder().encode(editor.getCode()));
-    host.run(editor.getCode(), 'main.lua', `${scriptDir}/main.lua`);
-});
+    screen.present(true);
+
+    await host.addFile(path, new TextEncoder().encode(code));
+
+    if (!host.run(code, 'main.lua', path)) {
+        editor.setState('Lua не готова', false);
+    }
+}
 editor.onStop(() => host.stop());
 
 // ----------------------------------------------------------------- заставка
@@ -192,6 +208,15 @@ editor.onStop(() => host.stop());
  * Показується від завантаження сторінки до першого запуску програми.
  */
 async function showSplash(): Promise<void> {
+    // Заставка — прикраса, тож її поломка не має заважати нічому іншому
+    try {
+        await paintSplash();
+    } catch (error) {
+        console.warn('Заставку показати не вдалося:', error);
+    }
+}
+
+async function paintSplash(): Promise<void> {
     const response = await fetch(splashUrl);
     const bitmap = await createImageBitmap(await response.blob());
 
@@ -208,8 +233,14 @@ async function showSplash(): Promise<void> {
     screen.present(true);
 }
 
-/** Малює на екрані пристрою причину, чому Lua не запустилася. */
-function showFailure(): void {
+/**
+ * Малює на екрані пристрою справжню причину, чому Lua не запустилася.
+ *
+ * Раніше тут стояло одне наперед задане пояснення про спільну пам'ять — і
+ * будь-яка інша поломка виглядала так само. Тепер показується те, що справді
+ * сталося.
+ */
+function showFailure(message: string): void {
     const font = getLoadedFont('6x13');
     if (!font) return;
 
@@ -222,8 +253,8 @@ function showFailure(): void {
     text.write('Lua не запустилася');
 
     text.setTextColor(color565(200, 210, 220));
-    text.setCursor(10, 60);
-    text.write('Браузер не дав спільної пам\'яті.\nНайнадійніше працює Chrome.\n\nСпробуйте перезавантажити\nсторінку — можливо, service\nworker ще не встиг стати\nдо роботи.');
+    text.setCursor(10, 58);
+    text.write(message);
 
     screen.present(true);
 }
@@ -277,6 +308,14 @@ requestAnimationFrame(frame);
 void (async () => {
     // Рантайм піднімається окремо: без SharedArrayBuffer він не запуститься,
     // і про це краще сказати прямо, ніж мовчки лишити кнопку неактивною.
+    // Один рядок у консолі браузера: за ним видно, чи браузер дав ізоляцію.
+    // Перевіряються саме можливості, а не назва браузера.
+    console.info('Середовище Лілки', {
+        crossOriginIsolated: globalThis.crossOriginIsolated,
+        sharedArrayBuffer: typeof SharedArrayBuffer !== 'undefined',
+        secureContext: globalThis.isSecureContext,
+    });
+
     try {
         // Шрифт потрібен ще до рантайму — щоб було чим написати про помилку
         await loadFont('6x13');
@@ -295,7 +334,7 @@ void (async () => {
         const message = error instanceof Error ? error.message : String(error);
         editor.print(message, 'err');
         editor.setState('Lua не запустилася', false);
-        showFailure();
+        showFailure(message);
     }
 })();
 
