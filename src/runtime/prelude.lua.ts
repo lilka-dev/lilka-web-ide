@@ -262,6 +262,42 @@ function progressUI(title, message)
     return setmetatable({ __id = api.ui.__new_progress(title, message) }, Progress)
 end
 
+--[[
+    require із віртуальної карти.
+
+    Прошивка задає package.path = <тека скрипта>/?.lua, і стандартний require
+    сам знаходить файл на SD-карті. У браузері диска немає, тож у package
+    додається власний шукач: він питає вміст файлу в емулятора, компілює його
+    й повертає результат.
+
+    Кеш обов'язковий і не є оптимізацією: require має повертати ОДИН і той
+    самий об'єкт при повторних викликах. Астероїди на це спираються —
+    modules/ship.lua і modules/asteroid.lua обидва роблять
+    require("modules.data") й очікують ті самі спрайти, а не завантажені
+    вдруге.
+--]]
+package = package or {}
+package.loaded = package.loaded or {}
+
+function require(name)
+    local cached = package.loaded[name]
+    if cached ~= nil then return cached end
+
+    local source = api.__read_module(name)
+    if source == nil or source == "" then
+        error("module '" .. tostring(name) .. "' not found", 2)
+    end
+
+    local chunk, message = load(source, "@" .. tostring(name):gsub("%.", "/") .. ".lua")
+    if not chunk then error(message, 2) end
+
+    local result = chunk(name)
+    -- Модуль без return вважається завантаженим: так само поводиться Lua
+    if result == nil then result = true end
+    package.loaded[name] = result
+    return result
+end
+
 -- Ноти для зумера. У прошивці ця таблиця теж є, і теж відсутня в анотаціях.
 notes = api.__notes
 

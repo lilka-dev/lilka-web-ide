@@ -7,6 +7,7 @@
 
 import dice from './dice.lua?raw';
 import catCode from './cat/cat.lua?raw';
+import asteroidsCode from './asteroids/asteroids.lua?raw';
 import catBoth from './cat/both.bmp?url';
 import catLeft from './cat/left.bmp?url';
 import catNo from './cat/no.bmp?url';
@@ -25,12 +26,43 @@ export interface Example {
     dir?: string;
     /** Супутні файли: шлях у карті -> адреса ресурсу. Вантажаться на вимогу. */
     assets?: Record<string, string>;
+    /**
+     * Ресурси, зібрані автоматично з підтек. Зручніше за ручний перелік, коли
+     * файлів багато: астероїди мають чотири модулі й шістнадцять ресурсів.
+     */
+    assetGlob?: Record<string, string>;
+    assetBase?: string;
+}
+
+/** Зводить обидва способи опису ресурсів до одного вигляду. */
+export function exampleAssets(example: Example): Record<string, string> {
+    if (example.assets) return example.assets;
+    if (!example.assetGlob || !example.assetBase) return {};
+
+    const out: Record<string, string> = {};
+    for (const [path, url] of Object.entries(example.assetGlob)) {
+        out[path.slice(example.assetBase.length)] = url;
+    }
+    return out;
 }
 
 export const EXAMPLES: Example[] = [
     { id: 'circle', title: 'Коло та кнопки', code: circle },
     { id: 'dice', title: 'Гра «Кубики»', code: dice },
     { id: 'simon', title: 'Повтори комбінацію', code: simon },
+    {
+        id: 'asteroids',
+        title: 'Астероїди',
+        code: asteroidsCode,
+        dir: '/sd/Examples/asteroids',
+        // Ресурси беруться цілою текою: у грі є і модулі, і картинки, і звук
+        assetGlob: import.meta.glob('./asteroids/{modules,resources}/*', {
+            query: '?url',
+            import: 'default',
+            eager: true,
+        }) as Record<string, string>,
+        assetBase: './asteroids/',
+    },
     {
         id: 'cat',
         title: 'Кіт (із картинками)',

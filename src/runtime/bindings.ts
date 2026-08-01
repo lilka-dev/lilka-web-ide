@@ -70,69 +70,85 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
     const fb = () => device.canvas;
     const text = () => device.textRenderer;
 
+    /**
+     * Приведення координати до цілого числа.
+     *
+     * У прошивці кожна прив'язка малювання робить `int16_t x =
+     * luaL_checknumber(...)` або `luaL_checkinteger(...)` — тобто дробове
+     * число відкидає дріб У БІК НУЛЯ, як завжди в C.
+     *
+     * Це не дрібниця. Астероїди рахують координати корабля з прискорення, і
+     * вони майже завжди дробові: 150.938 замість 150. Без приведення
+     * малювання йде за дробовими координатами, а `writePixel` очікує цілі —
+     * і на екрані не з'являється нічого.
+     */
+    const i16 = (value: number): number => Math.trunc(Number(value));
+
     const display = {
         color565: impl('display.color565', (r: number, g: number, b: number) => color565(r, g, b)),
 
-        fill_screen: impl('display.fill_screen', (c: number) => fb().fillScreen(c)),
-        draw_pixel: impl('display.draw_pixel', (x: number, y: number, c: number) => fb().drawPixel(x, y, c)),
+        fill_screen: impl('display.fill_screen', (c: number) => fb().fillScreen(i16(c))),
+        draw_pixel: impl('display.draw_pixel', (x: number, y: number, c: number) =>
+            fb().drawPixel(i16(x), i16(y), i16(c)),
+        ),
         draw_line: impl('display.draw_line', (x1: number, y1: number, x2: number, y2: number, c: number) =>
-            fb().drawLine(x1, y1, x2, y2, c),
+            fb().drawLine(i16(x1), i16(y1), i16(x2), i16(y2), i16(c)),
         ),
         draw_rect: impl('display.draw_rect', (x: number, y: number, w: number, h: number, c: number) =>
-            fb().drawRect(x, y, w, h, c),
+            fb().drawRect(i16(x), i16(y), i16(w), i16(h), i16(c)),
         ),
         fill_rect: impl('display.fill_rect', (x: number, y: number, w: number, h: number, c: number) =>
-            fb().fillRect(x, y, w, h, c),
+            fb().fillRect(i16(x), i16(y), i16(w), i16(h), i16(c)),
         ),
         draw_circle: impl('display.draw_circle', (x: number, y: number, r: number, c: number) =>
-            fb().drawCircle(x, y, r, c),
+            fb().drawCircle(i16(x), i16(y), i16(r), i16(c)),
         ),
         fill_circle: impl('display.fill_circle', (x: number, y: number, r: number, c: number) =>
-            fb().fillCircle(x, y, r, c),
+            fb().fillCircle(i16(x), i16(y), i16(r), i16(c)),
         ),
         // Назва з однією «l» — саме так вона пишеться в прошивці
         draw_elipse: impl('display.draw_elipse', (x: number, y: number, rx: number, ry: number, c: number) =>
-            fb().drawEllipse(x, y, rx, ry, c),
+            fb().drawEllipse(i16(x), i16(y), i16(rx), i16(ry), i16(c)),
         ),
         fill_elipse: impl('display.fill_elipse', (x: number, y: number, rx: number, ry: number, c: number) =>
-            fb().fillEllipse(x, y, rx, ry, c),
+            fb().fillEllipse(i16(x), i16(y), i16(rx), i16(ry), i16(c)),
         ),
         draw_arc: impl(
             'display.draw_arc',
             (x: number, y: number, r1: number, r2: number, a1: number, a2: number, c: number) =>
-                fb().drawArc(x, y, r1, r2, a1, a2, c),
+                fb().drawArc(i16(x), i16(y), i16(r1), i16(r2), a1, a2, i16(c)),
         ),
         fill_arc: impl(
             'display.fill_arc',
             (x: number, y: number, r1: number, r2: number, a1: number, a2: number, c: number) =>
-                fb().fillArc(x, y, r1, r2, a1, a2, c),
+                fb().fillArc(i16(x), i16(y), i16(r1), i16(r2), a1, a2, i16(c)),
         ),
         draw_triangle: impl(
             'display.draw_triangle',
             (x1: number, y1: number, x2: number, y2: number, x3: number, y3: number, c: number) =>
-                fb().drawTriangle(x1, y1, x2, y2, x3, y3, c),
+                fb().drawTriangle(i16(x1), i16(y1), i16(x2), i16(y2), i16(x3), i16(y3), i16(c)),
         ),
         fill_triangle: impl(
             'display.fill_triangle',
             (x1: number, y1: number, x2: number, y2: number, x3: number, y3: number, c: number) =>
-                fb().fillTriangle(x1, y1, x2, y2, x3, y3, c),
+                fb().fillTriangle(i16(x1), i16(y1), i16(x2), i16(y2), i16(x3), i16(y3), i16(c)),
         ),
 
         draw_image: impl('display.draw_image', (handle: unknown, x: number, y: number) =>
-            fb().drawImage(device.image(handle), x, y),
+            fb().drawImage(device.image(handle), i16(x), i16(y)),
         ),
         draw_image_transformed: impl(
             'display.draw_image_transformed',
             (handle: unknown, x: number, y: number, transform: unknown) =>
-                fb().drawImageTransformed(device.image(handle), x, y, toTransform(transform)),
+                fb().drawImageTransformed(device.image(handle), i16(x), i16(y), toTransform(transform)),
         ),
 
         set_font: impl('display.set_font', (name: string) => text().setFont(device.font(name))),
-        set_cursor: impl('display.set_cursor', (x: number, y: number) => text().setCursor(x, y)),
+        set_cursor: impl('display.set_cursor', (x: number, y: number) => text().setCursor(i16(x), i16(y))),
         set_text_size: impl('display.set_text_size', (size: number) => text().setTextSize(size)),
         set_text_color: impl('display.set_text_color', (fg: number, bg?: number) => text().setTextColor(fg, bg)),
         set_text_bound: impl('display.set_text_bound', (x: number, y: number, w: number, h: number) =>
-            text().setTextBound(x, y, w, h),
+            text().setTextBound(i16(x), i16(y), i16(w), i16(h)),
         ),
         queue_draw: impl('display.queue_draw', () => device.queueDraw()),
 
@@ -297,6 +313,26 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
         write_file: impl('resources.write_file', (path: string, content: string) => {
             device.writeFile(device.resolveResourcePath(path), encoder.encode(content));
         }),
+        /**
+         * Заглушка звуку.
+         *
+         * `data.lua` в астероїдах викликає її ще при завантаженні, тож без
+         * неї гра не запускається взагалі. Повертає дескриптор, який нічим
+         * не є: `audio.play` поки теж заглушка, а гра типово грає через
+         * зумер.
+         */
+        load_audio: impl('resources.load_audio', (path: string) => ({ id: 0, path: String(path) })),
+
+        /**
+         * Звільнення зображення. На залізі це справді важливо — пам'яті
+         * обмаль, і `ship.lua` викликає це щокадру при обертанні. У браузері
+         * пам'ять збирається сама, тож тут лише прибирання з реєстру.
+         */
+        delete: impl('resources.delete', (handle: unknown) => {
+            const id = typeof handle === 'number' ? handle : (handle as { id?: number } | null)?.id;
+            if (typeof id === 'number') device.images.release(id);
+        }),
+
         rotate_image: impl('resources.rotate_image', (handle: unknown, angle: number, blank: number) =>
             imageHandle(device.images.add(device.image(handle).rotate(angle, blank)), device.image(handle)),
         ),
@@ -644,6 +680,23 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
             __millis: () => hooks.now(),
             __sleep_ms: (ms: number) => hooks.sleepMs(ms),
             __queue_draw: () => device.queueDraw(),
+            /**
+             * Читання модуля для `require`.
+             *
+             * Прошивка задає `package.path = <тека скрипта>/?.lua`, тож
+             * `require("modules.ship")` перетворюється на
+             * `<тека>/modules/ship.lua`. Стандартний пошук Lua тут не працює:
+             * він шукає на справжньому диску, якого в браузері немає.
+             */
+            __read_module: (name: string) => {
+                const relative = String(name).replace(/\./g, '/') + '.lua';
+                const full = device.resolveResourcePath(relative);
+                const bytes = device.vfs.read(full);
+                // Порожній рядок замість null: `null` із JS приїжджає в Lua
+                // окремим значенням, а не як `nil`, і перевірка на nil його
+                // не ловить
+                return bytes ? decoder.decode(bytes) : '';
+            },
             __sample_buttons: () => device.sampleButtons(),
             __set_fullscreen: (value: boolean) => device.setFullscreen(!!value),
         },

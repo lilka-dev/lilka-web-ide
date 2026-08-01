@@ -324,5 +324,56 @@ async function runScript(code: string, options: { budget?: number } = {}) {
     ok(filled[0] === filled[1], `буфери однакові: ${filled.join(' проти ')}`);
 }
 
+// 20. require бере модуль із віртуальної карти.
+//     Прошивка задає package.path = <тека скрипта>/?.lua, а стандартний
+//     пошук Lua дивиться на справжній диск, якого в браузері немає.
+{
+    const memory = createSharedMemory(W, H);
+    const output: string[] = [];
+    const runtime = new LuaRuntime({
+        memory,
+        fonts,
+        statusBarHeight: profile.canvas.statusBarHeight,
+        defaultFont: board.defaultFont,
+        onPrint: (text) => output.push(text),
+    });
+    await runtime.prepare();
+    runtime.loadFiles('/sd/гра/main.lua', [
+        ['/sd/гра/modules/data.lua', new TextEncoder().encode('return { value = 42 }')],
+    ]);
+    runtime.run(`
+        local data = require("modules.data")
+        print(data.value)
+        -- повторний виклик має дати ТОЙ САМИЙ об'єкт, а не завантажити вдруге
+        print(require("modules.data") == data)
+    `);
+    runtime.close();
+    ok(output[0] === '42', `модуль завантажено: "${output[0]}"`);
+    ok(output[1] === 'true', `повторний require повертає той самий об'єкт: "${output[1]}"`);
+}
+
+// 21. Відсутній модуль дає зрозумілу помилку, а не мовчазний nil
+{
+    const { result } = await runScript('require("modules.немає")');
+    ok(
+        (result.message ?? '').includes("module 'modules.немає' not found"),
+        `зрозуміла помилка: "${result.message}"`,
+    );
+}
+
+// 22. Дробові координати приводяться до цілих, як `int16_t x = luaL_checknumber()`.
+//     Без цього гра з фізикою (координати з прискорення майже завжди дробові)
+//     не малює НІЧОГО — саме на цьому спіткнулися астероїди.
+{
+    const { pixels } = await runScript(`
+        display.fill_screen(0)
+        display.fill_circle(100.7, 80.3, 10.9, colors.white)
+    `);
+    let painted = 0;
+    for (const value of pixels) if (value !== 0) painted++;
+    ok(painted > 200, `дробові координати малюють: ${painted} пікселів`);
+    ok(pixels[80 * W + 100] === 0xffff, 'центр кола на місці після відкидання дробу');
+}
+
 console.log(fails === 0 ? '✔ рантайм: усі перевірки пройдено' : `✖ рантайм: ${fails} перевірок не пройдено`);
 process.exit(fails ? 1 : 0);

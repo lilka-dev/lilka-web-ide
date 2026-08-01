@@ -999,3 +999,35 @@ body {
     padding: 11px 14px;
     border-top: 1px solid var(--edge);
 }
+
+/* Вузьке віконце для введення назви — своє, замість системного prompt */
+.dialog--narrow {
+    max-width: 320px;
+}
+
+.dialog__input {
+    display: block;
+    width: calc(100% - 32px);
+    margin: 12px 16px 4px;
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 14px;
+    color: var(--ink);
+    background: #fff;
+    border: 1px solid var(--pill-edge);
+    border-radius: 8px;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+.dialog__input:focus {
+    outline: none;
+    border-color: var(--teal);
+}
+
+/* Кнопки-списки в панелі файлів: піктограма плюс підпис */
+.files__bar .button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}

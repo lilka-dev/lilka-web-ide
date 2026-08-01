@@ -22,6 +22,7 @@ import { loadFont, getLoadedFont } from './emulator/fonts.ts';
 import splashUrl from './assets/splash.png?url';
 import { createShell } from './ui/shell.ts';
 import { createEditor, SAMPLE_CODE } from './ui/editor.ts';
+import { exampleAssets } from './examples/index.ts';
 import { createFilesPanel, ROOT, type FileEntry } from './ui/files.ts';
 import { basename, dirname } from './emulator/vfs.ts';
 import { LuaHost } from './runtime/host.ts';
@@ -60,13 +61,18 @@ editorColumn.append(editor.root);
 let fontJson: Record<string, FontJson> = {};
 
 /**
- * Тека, у якій лежить поточна програма.
+ * Тека програми, яка зараз у редакторі.
  *
- * Головне правило моделі: програма лежить ПОРУЧ зі своїми картинками. Тому
- * `main.lua` зберігається саме сюди, і відносні шляхи в `resources.load_image`
- * завжди працюють — файл шукається там само.
+ * Це НЕ те саме, що поточна тека менеджера. Раніше було саме так — і `main.lua`
+ * записувався всюди, куди зайдеш, зокрема в `modules` і `resources` чужої гри.
+ *
+ * Тепер тека програми міняється лише у двох випадках: коли відкривають приклад
+ * і коли відкривають `.lua` з менеджера. Просто ходити теками безпечно.
  */
 let scriptDir = ROOT;
+
+/** Приклади живуть окремо, щоб не мішатися з роботою. */
+const EXAMPLES_DIR = `${ROOT}/Examples`;
 
 /** Перелік вмісту поточної теки для панелі. Теки спершу, далі за назвою. */
 function listCurrent(): FileEntry[] {
@@ -95,16 +101,46 @@ function refreshFiles(): void {
     files.render(listCurrent, () => host.vfs.allDirectories(ROOT));
 }
 
-/** Віддає файл користувачу як завантаження. */
-function downloadFile(path: string): void {
-    const data = host.vfs.read(path);
-    if (!data) return;
+/** Спільна частина: віддає готові байти як завантаження. */
+function saveAs(name: string, data: Uint8Array): void {
     const url = URL.createObjectURL(new Blob([data.slice() as unknown as BlobPart]));
     const link = document.createElement('a');
     link.href = url;
-    link.download = basename(path);
+    link.download = name;
     link.click();
     URL.revokeObjectURL(url);
+}
+
+/**
+ * Завантаження: файл віддається як є, тека пакується в архів.
+ *
+ * Шляхи в архіві рахуються від самої теки, без неї самої — тож розпакування
+ * поруч дає ту саму структуру, яку чекає програма.
+ */
+async function downloadPath(path: string): Promise<void> {
+    const info = host.vfs.stat(path);
+
+    if (info && !info.isDirectory) {
+        const data = host.vfs.read(path);
+        if (data) saveAs(basename(path), data);
+        return;
+    }
+
+    const entries: Record<string, Uint8Array> = {};
+    const prefix = path + '/';
+    for (const file of host.vfs.allFiles()) {
+        if (!file.path.startsWith(prefix)) continue;
+        const data = host.vfs.read(file.path);
+        if (data) entries[file.path.slice(prefix.length)] = data;
+    }
+
+    if (Object.keys(entries).length === 0) {
+        editor.print(`Тека «${basename(path)}» порожня — пакувати нічого.`, 'err');
+        return;
+    }
+
+    const { zipSync } = await import('fflate');
+    saveAs(`${basename(path)}.zip`, zipSync(entries, { level: 6 }));
 }
 
 // Панель файлів живе під пристроєм, а не під редактором: ліворуч під
@@ -116,7 +152,7 @@ const files = createFilesPanel({
     onMkdir: (path) => host.mkdir(path),
     onMove: (from, to) => host.movePath(from, to),
     onDuplicate: (path) => host.duplicateFile(path),
-    onDownload: downloadFile,
+    onDownload: (path) => void downloadPath(path),
     onOpenLua: (path) => {
         const data = host.vfs.read(path);
         if (!data) return;
@@ -124,9 +160,9 @@ const files = createFilesPanel({
         scriptDir = dirname(path);
         editor.print(`Відкрито ${path}`);
     },
-    onDirChange: (dir) => {
-        scriptDir = dir;
-    },
+    // Навігація менеджером НЕ переносить програму: інакше `main.lua`
+    // з'являвся б у кожній теці, куди зайшли подивитися
+    onDirChange: () => {},
 });
 deviceColumn.append(files.root);
 
@@ -155,11 +191,12 @@ const host = new LuaHost(board, DEFAULT_FONT, {
  */
 editor.onExample((example) => {
     void (async () => {
-        const dir = `${ROOT}/${example.id}`;
+        const dir = `${EXAMPLES_DIR}/${example.id}`;
         for (const file of host.vfs.allFiles()) {
             if (file.path.startsWith(dir + '/')) host.removeFile(file.path);
         }
-        for (const [name, url] of Object.entries(example.assets ?? {})) {
+        // Ім'я ресурсу може містити підтеки: `modules/ship.lua`
+        for (const [name, url] of Object.entries(exampleAssets(example))) {
             const response = await fetch(url);
             await host.addFile(`${dir}/${name}`, new Uint8Array(await response.arrayBuffer()));
         }

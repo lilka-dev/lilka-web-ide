@@ -22,8 +22,6 @@ import { fileIcon, iconElement } from './icons.ts';
 export const ROOT = '/sd';
 const ROOT_TITLE = 'Файли';
 
-const TEXT_EXTENSIONS = ['.lua', '.js', '.mjs', '.txt', '.json', '.state', '.csv'];
-
 export interface FileEntry {
     path: string;
     name: string;
@@ -57,11 +55,7 @@ function humanSize(bytes: number): string {
     return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
 }
 
-function isAccepted(name: string, data: Uint8Array): boolean {
-    const lower = name.toLowerCase();
-    if (TEXT_EXTENSIONS.some((extension) => lower.endsWith(extension))) return true;
-    return detectFormat(data) !== 'unknown';
-}
+
 
 /** Мініатюра з даних картинки. Показує саме зображення, а не значок формату. */
 function thumbnailUrl(data: Uint8Array, format: string): string {
@@ -84,29 +78,60 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
     const bar = document.createElement('div');
     bar.className = 'files__bar';
 
-    const addButton = document.createElement('button');
-    addButton.type = 'button';
-    addButton.className = 'button button--primary files__add';
-    addButton.textContent = '+ Додати файли';
-
     const picker = document.createElement('input');
     picker.type = 'file';
     picker.multiple = true;
     picker.hidden = true;
-    addButton.addEventListener('click', () => picker.click());
     picker.addEventListener('change', () => {
         void readFiles(picker.files);
         picker.value = '';
     });
 
-    const mkdirButton = document.createElement('button');
-    mkdirButton.type = 'button';
-    mkdirButton.className = 'button';
-    mkdirButton.textContent = 'Нова тека';
-    mkdirButton.addEventListener('click', () => {
-        const name = prompt('Назва теки');
-        if (!name) return;
-        events.onMkdir(`${dir}/${name.trim()}`);
+    /** Вибір теки з комп'ютера — разом із усім вкладеним. */
+    function pickFolder(): void {
+        const folderPicker = document.createElement('input');
+        folderPicker.type = 'file';
+        folderPicker.setAttribute('webkitdirectory', '');
+        folderPicker.addEventListener('change', () => void readFiles(folderPicker.files));
+        folderPicker.click();
+    }
+
+    // Дві кнопки-списки замість трьох окремих: «Завантажити» бере з комп'ютера,
+    // «Створити» робить нове тут. Меню «…» вгорі стало непотрібним.
+    const uploadButton = document.createElement('button');
+    uploadButton.type = 'button';
+    uploadButton.className = 'button button--primary';
+    uploadButton.append(iconElement('upload', 15));
+    uploadButton.append(document.createTextNode(' Завантажити'));
+    uploadButton.addEventListener('click', (event) => {
+        event.stopPropagation();
+        openMenu(uploadButton, [
+            { label: 'Файл…', run: () => picker.click() },
+            { label: 'Тека…', run: pickFolder },
+        ]);
+    });
+
+    const createButton = document.createElement('button');
+    createButton.type = 'button';
+    createButton.className = 'button';
+    createButton.append(iconElement('plus', 15));
+    createButton.append(document.createTextNode(' Створити'));
+    createButton.addEventListener('click', (event) => {
+        event.stopPropagation();
+        openMenu(createButton, [
+            {
+                label: 'Тека…',
+                run: () =>
+                    askName('Нова тека', 'Назва теки', '', (name) => events.onMkdir(`${dir}/${name}`)),
+            },
+            {
+                label: 'Файл…',
+                run: () =>
+                    askName('Новий файл', 'Назва файлу з розширенням', 'new.lua', (name) =>
+                        events.onAdd(`${dir}/${name}`, new Uint8Array(0)),
+                    ),
+            },
+        ]);
     });
 
     const viewToggle = document.createElement('div');
@@ -131,17 +156,7 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
     }
     viewToggle.append(gridButton, listButton);
 
-    const folderMenuButton = document.createElement('button');
-    folderMenuButton.type = 'button';
-    folderMenuButton.className = 'button files__dots';
-    folderMenuButton.textContent = '⋯';
-    folderMenuButton.title = 'Дії над текою';
-    folderMenuButton.addEventListener('click', (event) => {
-        event.stopPropagation();
-        openMenu(folderMenuButton, folderMenuItems());
-    });
-
-    bar.append(addButton, mkdirButton, picker, viewToggle, folderMenuButton);
+    bar.append(uploadButton, createButton, picker, viewToggle);
 
     // --- крихти
     const crumbs = document.createElement('div');
@@ -170,25 +185,23 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
         void readFiles(event.dataTransfer?.files ?? null);
     });
 
+    /**
+     * Приймаються БУДЬ-ЯКІ файли.
+     *
+     * Раніше все, крім BMP, PNG і тексту, відхилялося — і масове додавання
+     * гри давало довгий список «не додано». Але карта пам'яті на пристрої теж
+     * приймає будь-що: там лежать і `.mp3`, і `.md`, і чужі формати.
+     * Наше діло — попередити про картинки, які прошивка не прочитає, а не
+     * забороняти файли.
+     */
     async function readFiles(list: FileList | null): Promise<void> {
         if (!list) return;
-        const rejected: string[] = [];
         for (const file of Array.from(list)) {
             const data = new Uint8Array(await file.arrayBuffer());
-            if (!isAccepted(file.name, data)) {
-                rejected.push(file.name);
-                continue;
-            }
             // Файл із теки приходить із відносним шляхом — зберігаємо вкладеність
             const relative = (file as File & { webkitRelativePath?: string }).webkitRelativePath;
             const target = relative && relative.includes('/') ? `${dir}/${relative}` : `${dir}/${file.name}`;
             events.onAdd(normalizePath(target), data);
-        }
-        if (rejected.length) {
-            showNotice(
-                `Не додано: ${rejected.join(', ')}. Прошивка читає лише BMP, PNG і текстові файли.`,
-                'error',
-            );
         }
     }
 
@@ -249,29 +262,6 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
         openedMenu = menu;
     }
 
-    function folderMenuItems(): MenuItem[] {
-        return [
-            {
-                label: 'Додати теку з комп\'ютера',
-                run: () => {
-                    const folderPicker = document.createElement('input');
-                    folderPicker.type = 'file';
-                    folderPicker.setAttribute('webkitdirectory', '');
-                    folderPicker.addEventListener('change', () => void readFiles(folderPicker.files));
-                    folderPicker.click();
-                },
-            },
-            { label: 'Очистити цю теку', kind: 'danger', run: clearCurrent },
-        ];
-    }
-
-    function clearCurrent(): void {
-        const own = getList();
-        if (own.length === 0) return;
-        if (!confirm(`Видалити все з теки «${basename(dir) || ROOT_TITLE}»? Це ${own.length} об'єктів.`)) return;
-        for (const entry of own) events.onRemove(entry.path);
-    }
-
     function entryMenuItems(entry: FileEntry, info: ImageInfo | null): MenuItem[] {
         const items: MenuItem[] = [];
 
@@ -291,11 +281,11 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
 
         items.push({
             label: 'Перейменувати',
-            run: () => {
-                const name = prompt('Нова назва', entry.name);
-                if (!name || name === entry.name) return;
-                events.onMove(entry.path, `${dirname(entry.path)}/${name.trim()}`);
-            },
+            run: () =>
+                askName('Перейменувати', 'Нова назва', entry.name, (name) => {
+                    if (name === entry.name) return;
+                    events.onMove(entry.path, `${dirname(entry.path)}/${name}`);
+                }),
         });
 
         if (!entry.isDirectory) {
@@ -304,9 +294,10 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
 
         items.push({ label: 'Перемістити…', run: () => openMoveDialog([entry.path]) });
 
-        if (!entry.isDirectory) {
-            items.push({ label: 'Завантажити', run: () => events.onDownload(entry.path) });
-        }
+        items.push({
+            label: entry.isDirectory ? 'Завантажити архівом' : 'Завантажити',
+            run: () => events.onDownload(entry.path),
+        });
 
         items.push({
             label: 'Видалити',
@@ -331,6 +322,72 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
         } catch (error) {
             showNotice(`Не вдалося виправити «${entry.name}»: ${String(error)}`, 'error');
         }
+    }
+
+    /**
+     * Своє віконце замість `prompt`.
+     *
+     * Системне вікно браузера з'являється вгорі екрана, виглядає чужорідно й
+     * на телефоні перекриває пів сторінки.
+     */
+    function askName(title: string, hint: string, initial: string, run: (name: string) => void): void {
+        const overlay = document.createElement('div');
+        overlay.className = 'overlay';
+
+        const dialog = document.createElement('div');
+        dialog.className = 'dialog dialog--narrow';
+
+        const heading = document.createElement('div');
+        heading.className = 'dialog__title';
+        heading.textContent = title;
+
+        const label = document.createElement('div');
+        label.className = 'dialog__hint';
+        label.textContent = hint;
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'dialog__input';
+        input.value = initial;
+
+        const footer = document.createElement('div');
+        footer.className = 'dialog__footer';
+
+        const cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.className = 'button';
+        cancel.textContent = 'Скасувати';
+        cancel.addEventListener('click', () => overlay.remove());
+
+        const confirmButton = document.createElement('button');
+        confirmButton.type = 'button';
+        confirmButton.className = 'button button--primary';
+        confirmButton.textContent = 'Готово';
+
+        const submit = () => {
+            const name = input.value.trim();
+            if (!name) return;
+            overlay.remove();
+            run(name);
+        };
+        confirmButton.addEventListener('click', submit);
+        input.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') submit();
+            if (event.key === 'Escape') overlay.remove();
+        });
+
+        footer.append(cancel, confirmButton);
+        dialog.append(heading, label, input, footer);
+        overlay.append(dialog);
+        overlay.addEventListener('click', (event) => {
+            if (event.target === overlay) overlay.remove();
+        });
+        document.body.append(overlay);
+
+        input.focus();
+        // Виділяється лише назва без розширення — саме її зазвичай і міняють
+        const dot = input.value.lastIndexOf('.');
+        input.setSelectionRange(0, dot > 0 ? dot : input.value.length);
     }
 
     // --- вікно переміщення

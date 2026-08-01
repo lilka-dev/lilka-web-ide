@@ -73,6 +73,13 @@ const ICONS: Record<string, string> = {
         <rect x="3.5" y="13" width="7.5" height="7.5" rx="1.6" fill="currentColor"/>
         <rect x="13" y="13" width="7.5" height="7.5" rx="1.6" fill="currentColor"/>
     `,
+    upload: `
+        <path d="M12 16.5V4.5M12 4.5l-4.2 4.2M12 4.5l4.2 4.2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M4 15v3.2A1.8 1.8 0 0 0 5.8 20h12.4a1.8 1.8 0 0 0 1.8-1.8V15" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
+    `,
+    plus: `
+        <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>
+    `,
     list: `
         <path d="M4 6.5h16M4 12h16M4 17.5h16" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>
     `,
@@ -87,7 +94,10 @@ export function iconNameFor(name: string, isDirectory: boolean): string {
     if (lower.endsWith('.js') || lower.endsWith('.mjs')) return 'js';
     if (lower.endsWith('.bmp') || lower.endsWith('.png')) return 'image';
     if (lower.endsWith('.bin')) return 'bin';
-    if (lower.endsWith('.mp3') || lower.endsWith('.wav')) return 'music';
+    if (lower.endsWith('.mp3') || lower.endsWith('.wav') || lower.endsWith('.aac') ||
+        lower.endsWith('.flac') || lower.endsWith('.mod')) {
+        return 'music';
+    }
     if (lower.endsWith('.state') || lower.endsWith('.json')) return 'state';
     return 'text';
 }
