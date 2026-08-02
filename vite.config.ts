@@ -7,6 +7,29 @@ export default defineConfig({
     build: {
         target: 'es2022',
         sourcemap: true,
+        rollupOptions: {
+            output: {
+                /*
+                 * Редактор виноситься окремо від решти.
+                 *
+                 * CodeMirror важить більше, ніж увесь інший код разом. Якщо
+                 * лишити його в головному файлі, сторінка почне показувати
+                 * Лілку лише після того, як завантажиться редактор — а він
+                 * потрібен на секунду пізніше.
+                 */
+                manualChunks: {
+                    editor: [
+                        'codemirror',
+                        '@codemirror/view',
+                        '@codemirror/state',
+                        '@codemirror/language',
+                        '@codemirror/commands',
+                        '@codemirror/autocomplete',
+                        '@codemirror/legacy-modes/mode/lua',
+                    ],
+                },
+            },
+        },
     },
     // Воркер оголошений як { type: 'module' }, тож і збиратися має модулем:
     // типовий для Vite формат iife з таким оголошенням не узгоджується.

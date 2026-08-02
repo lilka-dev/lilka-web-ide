@@ -29,6 +29,7 @@
 - **Звук** через WebAudio, з тими самими нотами, що в прошивці
 - **Кнопки** з клавіатури або мишею, з семантикою `just_pressed` як на залізі
 - **Експорт на карту** — архівом або прямим записом у теку
+- **Редактор** із підсвіткою Lua та автодоповненням із 244 підказок
 - **Віджети** `alertUI`, `keyboardUI` (з українською розкладкою), `progressUI`
 
 Покриття Lua API: **111 зі 174 функцій**; у межах задуманого — 107 зі 108 (99%).
@@ -44,7 +45,8 @@
 
 ## Чого ще немає
 
-mJS, Blockly, підсвітка синтаксису, запуск на пристрої через USB. Див. Issues.
+mJS, Blockly, запуск на пристрої через USB, імпорт і експорт у GitHub.
+Див. Issues.
 
 ---
 
@@ -75,12 +77,14 @@ npm run check:primitives # геометрія
 npm run check:fonts      # шрифти
 npm run check:images     # растр і перетворення
 npm run check:vfs        # файлова система
+npm run check:completions # автодоповнення
 npm run check:widgets    # віджети інтерфейсу
 npm run check:runtime    # рантайм Lua
 npm run gen:api          # перегенерувати lilka-api.json з keira
 npm run gen:fonts        # перегенерувати шрифти (тягне ~40 МБ джерела, кешує)
 npm run gen:fmath        # таблиці синусів
 npm run gen:notes        # таблиця нот
+npm run gen:completions  # підказки редактора з анотацій прошивки
 npm run gen:icons        # піктограми клавіатури
 npm run gen:coverage     # звіт покриття API
 npm run render:testcard  # PNG тест-карти без браузера

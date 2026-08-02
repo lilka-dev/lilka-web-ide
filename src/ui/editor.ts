@@ -11,6 +11,7 @@
  */
 
 import { EXAMPLES } from '../examples/index.ts';
+import type { CodeEditor } from './code-editor.ts';
 
 export type LanguageId = 'blockly' | 'lua' | 'mjs';
 
@@ -64,45 +65,36 @@ export function createEditor(initialCode: string): EditorPanel {
     const tabs = document.createElement('div');
     tabs.className = 'tabs';
 
-    /*
-     * Номери рядків. Повноцінний редактор буде окремим кроком (CodeMirror), а
-     * поки це найпростіше з робочого: колонка з номерами поруч із полем,
-     * синхронізована прокруткою. Головне — щоб число з повідомлення про
-     * помилку («main.lua:12») можна було знайти очима.
-     */
-    const codeWrap = document.createElement('div');
-    codeWrap.className = 'editor__code-wrap';
-
-    const gutter = document.createElement('div');
-    gutter.className = 'editor__gutter';
-    gutter.setAttribute('aria-hidden', 'true');
-
-    const textarea = document.createElement('textarea');
-    textarea.className = 'editor__code';
-    textarea.spellcheck = false;
-    /*
-     * Єдине джерело правди — файл на віртуальній карті.
+    /**
+     * Редактор вантажиться після першого показу сторінки.
      *
-     * Раніше редактор мав ще й окрему «чернетку» в пам'яті браузера, не
-     * пов'язану з файлом. Через це змінений `main.lua` після перегляду
-     * прикладу показував не те, що лежало у файлі.
+     * CodeMirror утричі важчий за решту коду разом. Якщо чекати на нього,
+     * Лілка з'явиться на екрані пізніше — а редактор потрібен лише тоді, коли
+     * почнуть писати.
+     *
+     * Доки він їде, на його місці стоїть поле з тим самим текстом, куди вже
+     * можна друкувати. Підміна відбувається без втрати написаного.
      */
-    textarea.value = initialCode;
+    let code: CodeEditor | null = null;
+    let pendingText = initialCode;
 
-    const syncGutter = (): void => {
-        const count = textarea.value.split('\n').length;
-        gutter.textContent = Array.from({ length: count }, (_, i) => i + 1).join('\n');
-    };
-
-    textarea.addEventListener('input', () => {
-        syncGutter();
+    const stub = document.createElement('textarea');
+    stub.className = 'editor__code editor__code--stub';
+    stub.spellcheck = false;
+    stub.value = initialCode;
+    stub.addEventListener('input', () => {
+        pendingText = stub.value;
         scheduleSave();
     });
-    textarea.addEventListener('scroll', () => {
-        gutter.scrollTop = textarea.scrollTop;
-    });
 
-    codeWrap.append(gutter, textarea);
+    /** Текст із того, що зараз показується — редактора або тимчасового поля. */
+    const currentText = (): string => (code ? code.getValue() : pendingText);
+
+    function setText(text: string): void {
+        pendingText = text;
+        if (code) code.setValue(text);
+        else stub.value = text;
+    }
 
     const placeholder = document.createElement('div');
     placeholder.className = 'editor__placeholder';
@@ -120,7 +112,8 @@ export function createEditor(initialCode: string): EditorPanel {
         }
 
         const ready = language.ready;
-        codeWrap.hidden = !ready;
+        (code?.dom ?? stub).hidden = !ready;
+        if (ready) void code?.setLanguage(id === 'mjs' ? 'js' : 'lua');
         placeholder.hidden = ready;
         runButton.disabled = !ready;
         if (!ready) {
@@ -173,8 +166,7 @@ export function createEditor(initialCode: string): EditorPanel {
     picker.addEventListener('change', () => {
         const example = EXAMPLES.find((e) => e.id === picker.value);
         if (!example) return;
-        textarea.value = example.code;
-        syncGutter();
+        setText(example.code);
         exampleHandler(example);
     });
 
@@ -223,51 +215,56 @@ export function createEditor(initialCode: string): EditorPanel {
         saveState.classList.add('editor__save--pending');
         if (saveTimer) clearTimeout(saveTimer);
         saveTimer = setTimeout(() => {
-            saveHandler(textarea.value);
+            saveHandler(currentText());
             setSaved();
         }, 600);
     }
 
     function saveNow(): void {
         if (saveTimer) clearTimeout(saveTimer);
-        saveHandler(textarea.value);
+        saveHandler(currentText());
         setSaved();
     }
 
     const output = document.createElement('pre');
     output.className = 'editor__console';
 
-    root.append(tabs, bar, fileBar, codeWrap, placeholder, output);
+    root.append(tabs, bar, fileBar, stub, placeholder, output);
 
-    // Ctrl/Cmd+Enter — звична комбінація для середовищ такого типу
-    textarea.addEventListener('keydown', (event) => {
-        if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-            event.preventDefault();
-            runButton.click();
-        }
-        // Cmd+S не потрібен для збереження, але рука сама тягнеться — хай
-        // зберігає негайно замість того, щоб браузер пропонував зберегти сторінку
-        if ((event.ctrlKey || event.metaKey) && event.key === 's') {
-            event.preventDefault();
-            saveNow();
-        }
-    });
+    void (async () => {
+        const { createCodeEditor } = await import('./code-editor.ts');
+        code = createCodeEditor({
+            initial: pendingText,
+            onChange: scheduleSave,
+            onRun: () => runButton.click(),
+            onSave: saveNow,
+        });
+        code.dom.classList.add('editor__code');
+        stub.replaceWith(code.dom);
+    })();
 
-    syncGutter();
     selectLanguage('lua');
 
     return {
         root,
-        getCode: () => textarea.value,
-        setCode: (code: string) => {
-            textarea.value = code;
-            syncGutter();
+        getCode: currentText,
+        setCode: (text: string) => {
+            setText(text);
             setSaved();
         },
         print(text: string, kind: 'out' | 'err' = 'out') {
             const line = document.createElement('div');
             line.className = kind === 'err' ? 'line line--error' : 'line';
             line.textContent = text;
+
+            // Повідомлення про помилку називає рядок — хай туди можна перейти
+            const at = /:(\d+):/.exec(text);
+            if (kind === 'err' && at) {
+                line.classList.add('line--clickable');
+                line.title = `Перейти до рядка ${at[1]}`;
+                line.addEventListener('click', () => code?.goToLine(Number(at[1])));
+            }
+
             output.append(line);
             output.scrollTop = output.scrollHeight;
         },

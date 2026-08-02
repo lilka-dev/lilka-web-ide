@@ -455,6 +455,87 @@ body {
     color: #c0392b;
 }
 
+/* Рядок помилки з номером — по ньому можна перейти до потрібного місця */
+.editor__console .line--clickable {
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 2px;
+}
+
+.editor__console .line--clickable:hover {
+    background: #fdecea;
+}
+
+/* ------------------------------------------------- поле коду ------------ */
+
+/*
+ * Редактор тягнеться по вертикалі й згортається разом із вмістом.
+ *
+ * Раніше поле мало сталу мінімальну висоту, і при короткій програмі під
+ * текстом лишалася порожня біла смуга до самого низу.
+ */
+.editor__code {
+    resize: vertical;
+    overflow: auto;
+    min-height: 180px;
+    max-height: 60vh;
+}
+
+.editor__code .cm-scroller {
+    overflow: auto;
+}
+
+.editor__placeholder {
+    display: grid;
+    place-items: center;
+    min-height: 300px;
+    padding: 24px;
+    text-align: center;
+    color: var(--muted);
+    background: repeating-linear-gradient(45deg, #fbfcfb, #fbfcfb 10px, #f5f7f6 10px, #f5f7f6 20px);
+    border: 1px dashed var(--edge);
+    border-radius: 10px;
+}
+
+.editor__placeholder strong {
+    display: block;
+    color: var(--ink);
+    margin-bottom: 6px;
+}
+
+.editor__console {
+    margin: 0;
+    min-height: 80px;
+    max-height: 200px;
+    overflow: auto;
+    padding: 8px 12px;
+    background: #fbfcfb;
+    border: 1px solid var(--edge);
+    border-radius: 10px;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+.editor__console .line--error {
+    color: #c0392b;
+}
+
+/* Рядок помилки з номером — по ньому можна перейти до потрібного місця */
+.editor__console .line--clickable {
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 2px;
+}
+
+.editor__console .line--clickable:hover {
+    background: #fdecea;
+}
+
 /* ------------------------------------------------- поле коду з номерами */
 
 .editor__code-wrap {
@@ -1063,4 +1144,31 @@ body {
 
 .editor__save--pending {
     color: var(--teal);
+}
+
+/*
+ * Тимчасове поле, доки їде редактор.
+ *
+ * Виглядає так само, щоб підміна не кидалася в очі, і вже приймає введення —
+ * написане не втратиться.
+ */
+.editor__code--stub {
+    width: 100%;
+    padding: 10px 12px 10px 44px;
+    color: var(--ink);
+    background: var(--card);
+    border: 1px solid var(--edge);
+    border-radius: 10px;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    tab-size: 4;
+    resize: vertical;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+.editor__code--stub:focus {
+    outline: none;
+    border-color: var(--teal);
 }

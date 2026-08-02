@@ -160,6 +160,7 @@ Lua-програма без `display.fill_screen` побачить не слід
 | `notes.ts` — 97 нот | `gen-notes.mjs` | `sdk/lilka/buzzer.h` |
 | `icons.ts` — 12 піктограм: клавіатура й файли | `gen-icons.mjs` | `sdk/lilka/icons/*.h`, `keira/src/apps/icons/*.h` |
 | `coverage.json` — звіт покриття API | `gen-coverage.mts` | запуск справжнього рантайму |
+| `completions.ts` — 244 підказки редактора | `gen-completions.mjs` | `lilka-api.json` |
 
 Усе це лежить у `src/generated/` і **не редагується вручну**. Змінилася
 прошивка — перезапустити скрипт, а не правити двадцять місць у коді.
