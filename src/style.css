@@ -1172,3 +1172,237 @@ body {
     outline: none;
     border-color: var(--teal);
 }
+
+/* ------------------------------------------- кнопка справжньої Лілки ----- */
+
+.tabs__device {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    padding-bottom: 6px;
+}
+
+/* Замість неактивної кнопки — тихе пояснення, чому її немає */
+.tabs__device-note {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.device-chip {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--ink);
+    background: var(--card);
+    border: 1px solid var(--edge);
+    border-radius: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+}
+
+.device-chip--on {
+    color: #0b5f53;
+    background: #eaf7f3;
+    border-color: #b9ded4;
+}
+
+.device-chip__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #12a150;
+}
+
+.button--device {
+    color: var(--teal);
+    border-color: var(--teal);
+    background: var(--card);
+}
+
+/* --------------------------------------------------- консоль Лілки ------ */
+
+.repl {
+    display: flex;
+    flex-direction: column;
+    background: var(--card);
+    border: 1px solid var(--edge);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.repl__head {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--edge);
+    font-size: 13px;
+}
+
+.repl__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    border-radius: 999px;
+    padding: 2px 9px;
+}
+
+.repl__badge--ready {
+    color: #0b5f53;
+    background: #eaf7f3;
+    border: 1px solid #b9ded4;
+}
+
+.repl__badge--ready::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #12a150;
+}
+
+.repl__badge--silent {
+    color: #854f0b;
+    background: #faeeda;
+    border: 1px solid #e8c89a;
+}
+
+.repl__badge--silent::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #d98a00;
+}
+
+.repl__icon {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1;
+    padding: 2px 4px;
+    cursor: pointer;
+}
+
+.repl__icon:first-of-type {
+    margin-left: auto;
+}
+
+.repl__log {
+    padding: 10px 12px;
+    min-height: 90px;
+    max-height: 200px;
+    overflow: auto;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    line-height: 1.75;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+.repl__note {
+    color: var(--muted);
+}
+
+.repl__note--dim {
+    color: #9cb3a8;
+    margin-top: 8px;
+}
+
+.repl__hints {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 5px;
+}
+
+.repl__hint {
+    appearance: none;
+    font: inherit;
+    font-size: 12.5px;
+    color: var(--ink);
+    background: #eef4f1;
+    border: 1px solid var(--edge);
+    border-radius: 6px;
+    padding: 3px 9px;
+    cursor: pointer;
+}
+
+.repl__command {
+    color: var(--ink);
+    margin-top: 6px;
+}
+
+.repl__output {
+    color: #3f5a50;
+    padding-left: 14px;
+}
+
+/* Команда без print нічого не поверне — підписуємо, що вона зробила */
+.repl__silent {
+    color: #9cb3a8;
+    padding-left: 14px;
+    font-style: italic;
+}
+
+.repl__error {
+    color: #b03a2e;
+    padding-left: 14px;
+}
+
+.repl__warning {
+    padding: 14px;
+    background: #fdf6e9;
+    color: #633806;
+    font-size: 12.5px;
+    line-height: 1.7;
+    border-top: 1px solid var(--edge);
+}
+
+.repl__warning-note {
+    margin-top: 8px;
+    color: #8a6a2b;
+}
+
+.repl__input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    border-top: 1px solid var(--edge);
+    background: #f7faf9;
+}
+
+.repl__input-row--off {
+    opacity: 0.5;
+}
+
+.repl__caret {
+    color: var(--teal);
+    font-family: ui-monospace, monospace;
+    font-size: 13px;
+}
+
+.repl__input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 13px;
+    color: var(--ink);
+    outline: none;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+.repl__tip {
+    font-size: 11px;
+    color: #9cb3a8;
+    white-space: nowrap;
+}

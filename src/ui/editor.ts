@@ -53,6 +53,13 @@ export interface EditorPanel {
     setFile(path: string): void;
     /** Зберігає негайно — потрібно перед запуском. */
     flush(): void;
+    /** Місце для кнопки підключення до Лілки. */
+    deviceSlot: HTMLElement;
+    /** Показує чи ховає кнопку «На пристрої». */
+    setDeviceReady(ready: boolean): void;
+    onRunOnDevice(handler: () => void): void;
+    /** Підміняє консоль середовища консоллю Лілки. */
+    showConsole(panel: HTMLElement | null): void;
     /** Вибрано приклад — можливо, із супутніми файлами. */
     onExample(handler: (example: (typeof EXAMPLES)[number]) => void): void;
 }
@@ -121,6 +128,17 @@ export function createEditor(initialCode: string): EditorPanel {
         }
     };
 
+    /**
+     * Кнопка підключення до справжньої Лілки.
+     *
+     * Стоїть праворуч у рядку вкладок: там вільно, і вона не мішається з
+     * «Запустити». Якщо браузер не вміє працювати з кабелем — замість кнопки
+     * тихий підпис із поясненням: неактивну кнопку тиснули б і не розуміли,
+     * чому нічого не стається.
+     */
+    const deviceSlot = document.createElement('span');
+    deviceSlot.className = 'tabs__device';
+
     for (const language of LANGUAGES) {
         const button = document.createElement('button');
         button.type = 'button';
@@ -137,6 +155,7 @@ export function createEditor(initialCode: string): EditorPanel {
         button.addEventListener('click', () => selectLanguage(language.id));
         tabs.append(button);
     }
+    tabs.append(deviceSlot);
 
     // --- панель дій
     const bar = document.createElement('div');
@@ -146,6 +165,13 @@ export function createEditor(initialCode: string): EditorPanel {
     runButton.type = 'button';
     runButton.className = 'button button--primary';
     runButton.textContent = '▶ Запустити';
+
+    /** З'являється лише при підключеній Лілці — інакше лише збивала б. */
+    const deviceRunButton = document.createElement('button');
+    deviceRunButton.type = 'button';
+    deviceRunButton.className = 'button button--device';
+    deviceRunButton.textContent = 'На пристрої';
+    deviceRunButton.hidden = true;
 
     const stopButton = document.createElement('button');
     stopButton.type = 'button';
@@ -173,7 +199,7 @@ export function createEditor(initialCode: string): EditorPanel {
     const status = document.createElement('span');
     status.className = 'editor__status';
 
-    bar.append(runButton, stopButton, picker, status);
+    bar.append(runButton, deviceRunButton, stopButton, picker, status);
 
     /*
      * Рядок із назвою файлу.
@@ -229,7 +255,11 @@ export function createEditor(initialCode: string): EditorPanel {
     const output = document.createElement('pre');
     output.className = 'editor__console';
 
-    root.append(tabs, bar, fileBar, stub, placeholder, output);
+    // Консоль Лілки стає на місце консолі середовища
+    const replSlot = document.createElement('div');
+    replSlot.className = 'editor__repl-slot';
+
+    root.append(tabs, bar, fileBar, stub, placeholder, output, replSlot);
 
     void (async () => {
         const { createCodeEditor } = await import('./code-editor.ts');
@@ -290,6 +320,16 @@ export function createEditor(initialCode: string): EditorPanel {
             setSaved();
         },
         flush: saveNow,
+        deviceSlot,
+        setDeviceReady: (ready) => {
+            deviceRunButton.hidden = !ready;
+        },
+        onRunOnDevice: (handler) => deviceRunButton.addEventListener('click', handler),
+        showConsole: (panel) => {
+            replSlot.textContent = '';
+            output.hidden = panel !== null;
+            if (panel) replSlot.append(panel);
+        },
     };
 }
 

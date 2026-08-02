@@ -23,6 +23,8 @@ import splashUrl from './assets/splash.png?url';
 import { createShell } from './ui/shell.ts';
 import { createEditor, SAMPLE_CODE } from './ui/editor.ts';
 import { exampleAssets } from './examples/index.ts';
+import { LilkaDevice, isSerialSupported } from './device/serial.ts';
+import { createConsolePanel } from './ui/console.ts';
 import { createFilesPanel, ROOT, type FileEntry } from './ui/files.ts';
 import { basename, dirname } from './emulator/vfs.ts';
 import { LuaHost } from './runtime/host.ts';
@@ -227,6 +229,113 @@ editor.onExample((example) => {
 editor.onSave((code) => {
     void host.addFile(scriptPath(), new TextEncoder().encode(code));
 });
+
+/* ------------------------------------------------- справжня Лілка ------- */
+
+/**
+ * Зв'язок із пристроєм по кабелю.
+ *
+ * Через кабель їде ЛИШЕ код. Програма з картинками або `require` потребує
+ * файлів на самій картці — і сказати про це треба ДО запуску, а не після
+ * незрозумілої помилки на Лілці.
+ */
+const consolePanel = createConsolePanel();
+let consoleOpen = false;
+
+const device = new LilkaDevice({
+    onLine: (text) => {
+        if (consoleOpen) {
+            // Перша ж відповідь означає, що Лілка справді в режимі консолі
+            consolePanel.setState('ready');
+            consolePanel.addOutput(text);
+        } else {
+            editor.print(text);
+        }
+    },
+    onConnect: () => {
+        editor.setDeviceReady(true);
+        drawDeviceButton();
+        editor.print('Лілку під\'єднано.');
+    },
+    onDisconnect: () => {
+        editor.setDeviceReady(false);
+        closeConsole();
+        drawDeviceButton();
+        editor.print('Лілку від\'єднано.');
+    },
+    onError: (message) => editor.print(message, 'err'),
+});
+
+/** Кнопка підключення в рядку вкладок. Три стани, як домовлялися. */
+function drawDeviceButton(): void {
+    const slot = editor.deviceSlot;
+    slot.textContent = '';
+
+    if (!isSerialSupported()) {
+        const note = document.createElement('span');
+        note.className = 'tabs__device-note';
+        note.textContent = 'підключення до Лілки — у Chrome';
+        note.title = 'Доступ до USB із веб-сторінки є лише в Chrome і Edge';
+        slot.append(note);
+        return;
+    }
+
+    const button = document.createElement('button');
+    button.type = 'button';
+
+    if (!device.connected) {
+        button.className = 'device-chip';
+        button.textContent = 'Під\'єднати Лілку';
+        button.addEventListener('click', () => void device.connect());
+    } else {
+        button.className = 'device-chip device-chip--on';
+        button.innerHTML = '<span class="device-chip__dot"></span>Лілка · USB ▾';
+        button.addEventListener('click', () => (consoleOpen ? closeConsole() : openConsole()));
+    }
+    slot.append(button);
+}
+
+function openConsole(): void {
+    consoleOpen = true;
+    editor.showConsole(consolePanel.root);
+    // Стан «мовчить» доти, доки Лілка не відповість: на ній самій треба
+    // відкрити «Розробка → Lua REPL», і через кабель це не вмикається
+    consolePanel.setState('silent');
+    consolePanel.focus();
+    void device.sendCommand('');
+}
+
+function closeConsole(): void {
+    consoleOpen = false;
+    editor.showConsole(null);
+}
+
+consolePanel.onCommand((line) => void device.sendCommand(line));
+consolePanel.onClose(closeConsole);
+
+/** Запуск на справжній Лілці. */
+editor.onRunOnDevice(() => {
+    const code = editor.getCode();
+
+    // Попередження ДО запуску: через кабель їде лише код
+    if (/require\s*\(|load_image\s*\(|load_audio\s*\(/.test(code)) {
+        const proceed = confirm(
+            'Через кабель їде лише код.\n\n' +
+                'Ця програма використовує файли — картинки, звуки або модулі. ' +
+                'Вони мають уже лежати на картці пам\'яті Лілки, інакше програма впаде.\n\n' +
+                'Запустити все одно?',
+        );
+        if (!proceed) return;
+    }
+
+    editor.print('Надсилаю код на Лілку…');
+    void device
+        .runProgram(code)
+        .then(() => editor.print('Код надіслано. На Лілці має відкритися «Розробка → Lua Live».'))
+        .catch((error) => editor.print(String(error), 'err'));
+});
+
+drawDeviceButton();
 
 editor.onRun(() => void runEditorCode());
 
