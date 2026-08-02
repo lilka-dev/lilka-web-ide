@@ -1031,3 +1031,36 @@ body {
     align-items: center;
     gap: 6px;
 }
+
+/* ------------------------------------------- рядок із назвою файлу ------- */
+
+.editor__file {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 2px 2px 0;
+    font-size: 12px;
+}
+
+.editor__file-name {
+    color: var(--ink);
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/*
+ * Стан збереження замість кнопки з дискетою: втратити роботу неможливо, бо
+ * кожна зміна лягає у файл сама. Напис знімає тривогу, не вимагаючи дії.
+ */
+.editor__save {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.editor__save--pending {
+    color: var(--teal);
+}

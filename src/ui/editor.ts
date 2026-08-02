@@ -12,8 +12,6 @@
 
 import { EXAMPLES } from '../examples/index.ts';
 
-const STORAGE_KEY = 'lilka-web-ide:draft';
-
 export type LanguageId = 'blockly' | 'lua' | 'mjs';
 
 interface LanguageTab {
@@ -48,6 +46,12 @@ export interface EditorPanel {
     setState(state: string, running: boolean): void;
     onRun(handler: () => void): void;
     onStop(handler: () => void): void;
+    /** Викликається, коли код треба записати у файл. */
+    onSave(handler: (code: string) => void): void;
+    /** Показує, який файл зараз відкрито. */
+    setFile(path: string): void;
+    /** Зберігає негайно — потрібно перед запуском. */
+    flush(): void;
     /** Вибрано приклад — можливо, із супутніми файлами. */
     onExample(handler: (example: (typeof EXAMPLES)[number]) => void): void;
 }
@@ -76,7 +80,14 @@ export function createEditor(initialCode: string): EditorPanel {
     const textarea = document.createElement('textarea');
     textarea.className = 'editor__code';
     textarea.spellcheck = false;
-    textarea.value = localStorage.getItem(STORAGE_KEY) ?? initialCode;
+    /*
+     * Єдине джерело правди — файл на віртуальній карті.
+     *
+     * Раніше редактор мав ще й окрему «чернетку» в пам'яті браузера, не
+     * пов'язану з файлом. Через це змінений `main.lua` після перегляду
+     * прикладу показував не те, що лежало у файлі.
+     */
+    textarea.value = initialCode;
 
     const syncGutter = (): void => {
         const count = textarea.value.split('\n').length;
@@ -84,8 +95,8 @@ export function createEditor(initialCode: string): EditorPanel {
     };
 
     textarea.addEventListener('input', () => {
-        localStorage.setItem(STORAGE_KEY, textarea.value);
         syncGutter();
+        scheduleSave();
     });
     textarea.addEventListener('scroll', () => {
         gutter.scrollTop = textarea.scrollTop;
@@ -163,7 +174,6 @@ export function createEditor(initialCode: string): EditorPanel {
         const example = EXAMPLES.find((e) => e.id === picker.value);
         if (!example) return;
         textarea.value = example.code;
-        localStorage.setItem(STORAGE_KEY, example.code);
         syncGutter();
         exampleHandler(example);
     });
@@ -173,16 +183,73 @@ export function createEditor(initialCode: string): EditorPanel {
 
     bar.append(runButton, stopButton, picker, status);
 
+    /*
+     * Рядок із назвою файлу.
+     *
+     * Показується шлях від кореня, а не саме ім'я: так видно і де програма
+     * лежить, і що саме запуститься. Раніше всі приклади звалися `main.lua`,
+     * і зорієнтуватися було годі.
+     */
+    const fileBar = document.createElement('div');
+    fileBar.className = 'editor__file';
+
+    const fileName = document.createElement('span');
+    fileName.className = 'editor__file-name';
+
+    const saveState = document.createElement('span');
+    saveState.className = 'editor__save';
+
+    fileBar.append(fileName, saveState);
+
+    let saveHandler: (code: string) => void = () => {};
+    let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function setSaved(): void {
+        saveState.textContent = 'збережено';
+        saveState.classList.remove('editor__save--pending');
+    }
+
+    /**
+     * Збереження без кнопки.
+     *
+     * Кнопка з дискетою тут нічого не рятує: втратити роботу неможливо, бо
+     * кожна зміна лягає у файл сама. Натомість показується стан — це знімає
+     * тривогу краще, ніж дія, яку треба пам'ятати робити.
+     *
+     * Затримка потрібна, щоб не писати у сховище на кожну натиснуту клавішу.
+     */
+    function scheduleSave(): void {
+        saveState.textContent = 'збереження…';
+        saveState.classList.add('editor__save--pending');
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+            saveHandler(textarea.value);
+            setSaved();
+        }, 600);
+    }
+
+    function saveNow(): void {
+        if (saveTimer) clearTimeout(saveTimer);
+        saveHandler(textarea.value);
+        setSaved();
+    }
+
     const output = document.createElement('pre');
     output.className = 'editor__console';
 
-    root.append(tabs, bar, codeWrap, placeholder, output);
+    root.append(tabs, bar, fileBar, codeWrap, placeholder, output);
 
     // Ctrl/Cmd+Enter — звична комбінація для середовищ такого типу
     textarea.addEventListener('keydown', (event) => {
         if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
             event.preventDefault();
             runButton.click();
+        }
+        // Cmd+S не потрібен для збереження, але рука сама тягнеться — хай
+        // зберігає негайно замість того, щоб браузер пропонував зберегти сторінку
+        if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+            event.preventDefault();
+            saveNow();
         }
     });
 
@@ -194,8 +261,8 @@ export function createEditor(initialCode: string): EditorPanel {
         getCode: () => textarea.value,
         setCode: (code: string) => {
             textarea.value = code;
-            localStorage.setItem(STORAGE_KEY, code);
             syncGutter();
+            setSaved();
         },
         print(text: string, kind: 'out' | 'err' = 'out') {
             const line = document.createElement('div');
@@ -217,6 +284,15 @@ export function createEditor(initialCode: string): EditorPanel {
         onExample: (handler: (example: (typeof EXAMPLES)[number]) => void) => {
             exampleHandler = handler;
         },
+        onSave: (handler) => {
+            saveHandler = handler;
+        },
+        setFile: (path) => {
+            // Шлях показується без технічного префікса `/sd`, зі стрілками
+            fileName.textContent = path.replace(/^\/sd\/?/, 'Файли › ').replace(/\//g, ' › ');
+            setSaved();
+        },
+        flush: saveNow,
     };
 }
 

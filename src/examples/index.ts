@@ -14,11 +14,20 @@ import catNo from './cat/no.bmp?url';
 import catRight from './cat/right.bmp?url';
 import circle from './circle.lua?raw';
 import simon from './simon.lua?raw';
+import snake from './snake/snake.lua?raw';
 
 export interface Example {
     id: string;
     title: string;
     code: string;
+    /**
+     * Ім'я головного файлу.
+     *
+     * Раніше всі приклади звалися `main.lua`, і в менеджері було не розібрати,
+     * де що. Прошивці однаково, як зветься файл, тож кожен приклад має власне
+     * ім'я.
+     */
+    file?: string;
     /**
      * Тека, у яку приклад «встановлюється» у віртуальну карту. Від неї
      * рахуються відносні шляхи в `resources.load_image`.
@@ -47,13 +56,15 @@ export function exampleAssets(example: Example): Record<string, string> {
 }
 
 export const EXAMPLES: Example[] = [
-    { id: 'circle', title: 'Коло та кнопки', code: circle },
-    { id: 'dice', title: 'Гра «Кубики»', code: dice },
-    { id: 'simon', title: 'Повтори комбінацію', code: simon },
+    { id: 'circle', title: 'Коло та кнопки', code: circle, file: 'circle.lua' },
+    { id: 'dice', title: 'Гра «Кубики»', code: dice, file: 'dice.lua' },
+    { id: 'simon', title: 'Повтори комбінацію', code: simon, file: 'repeat.lua' },
+    { id: 'snake', title: 'Змійка', code: snake, file: 'snake.lua' },
     {
         id: 'asteroids',
         title: 'Астероїди',
         code: asteroidsCode,
+        file: 'asteroids.lua',
         dir: '/sd/Examples/asteroids',
         // Ресурси беруться цілою текою: у грі є і модулі, і картинки, і звук
         assetGlob: import.meta.glob('./asteroids/{modules,resources}/*', {
@@ -67,7 +78,8 @@ export const EXAMPLES: Example[] = [
         id: 'cat',
         title: 'Кіт (із картинками)',
         code: catCode,
-        dir: '/sd/examples/cat',
+        file: 'cat.lua',
+        dir: '/sd/Examples/cat',
         assets: {
             'both.bmp': catBoth,
             'left.bmp': catLeft,

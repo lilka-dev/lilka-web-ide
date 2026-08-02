@@ -71,6 +71,14 @@ let fontJson: Record<string, FontJson> = {};
  */
 let scriptDir = ROOT;
 
+/** Ім'я файлу програми в цій теці. У прикладів воно своє. */
+let scriptFile = 'main.lua';
+
+/** Повний шлях до програми, яка зараз у редакторі. */
+function scriptPath(): string {
+    return `${scriptDir}/${scriptFile}`;
+}
+
 /** Приклади живуть окремо, щоб не мішатися з роботою. */
 const EXAMPLES_DIR = `${ROOT}/Examples`;
 
@@ -156,9 +164,10 @@ const files = createFilesPanel({
     onOpenLua: (path) => {
         const data = host.vfs.read(path);
         if (!data) return;
-        editor.setCode(new TextDecoder().decode(data));
         scriptDir = dirname(path);
-        editor.print(`Відкрито ${path}`);
+        scriptFile = basename(path);
+        editor.setCode(new TextDecoder().decode(data));
+        editor.setFile(path);
     },
     // Навігація менеджером НЕ переносить програму: інакше `main.lua`
     // з'являвся б у кожній теці, куди зайшли подивитися
@@ -191,19 +200,32 @@ const host = new LuaHost(board, DEFAULT_FONT, {
  */
 editor.onExample((example) => {
     void (async () => {
-        const dir = `${EXAMPLES_DIR}/${example.id}`;
-        for (const file of host.vfs.allFiles()) {
-            if (file.path.startsWith(dir + '/')) host.removeFile(file.path);
+        // Приклад без супутніх файлів лягає прямо в Examples, з файлами —
+        // у власну теку: інакше `modules` і `resources` різних ігор змішалися б
+        const hasAssets = Object.keys(exampleAssets(example)).length > 0;
+        const dir = hasAssets ? `${EXAMPLES_DIR}/${example.id}` : EXAMPLES_DIR;
+        if (hasAssets) {
+            for (const file of host.vfs.allFiles()) {
+                if (file.path.startsWith(dir + '/')) host.removeFile(file.path);
+            }
         }
         // Ім'я ресурсу може містити підтеки: `modules/ship.lua`
         for (const [name, url] of Object.entries(exampleAssets(example))) {
             const response = await fetch(url);
             await host.addFile(`${dir}/${name}`, new Uint8Array(await response.arrayBuffer()));
         }
-        await host.addFile(`${dir}/main.lua`, new TextEncoder().encode(example.code));
+        const name = example.file ?? 'main.lua';
+        await host.addFile(`${dir}/${name}`, new TextEncoder().encode(example.code));
         scriptDir = dir;
+        scriptFile = name;
+        editor.setFile(`${dir}/${name}`);
         files.setDir(dir);
     })();
+});
+
+// Автозбереження: кожна зміна лягає у файл, який зараз відкрито
+editor.onSave((code) => {
+    void host.addFile(scriptPath(), new TextEncoder().encode(code));
 });
 
 editor.onRun(() => void runEditorCode());
@@ -217,9 +239,12 @@ editor.onRun(() => void runEditorCode());
  */
 async function runEditorCode(): Promise<void> {
     editor.clearConsole();
+    // Записати негайно: автозбереження має затримку, і без цього воркер міг
+    // би отримати попередню версію коду
+    editor.flush();
 
     const code = editor.getCode();
-    const path = `${scriptDir}/main.lua`;
+    const path = scriptPath();
 
     surface.display.fillScreen(0);
     screen.present(true);
@@ -363,7 +388,12 @@ void (async () => {
         // видний ще до першого запуску
         if (!host.vfs.exists(`${ROOT}/main.lua`)) {
             await host.addFile(`${ROOT}/main.lua`, new TextEncoder().encode(editor.getCode()));
+        } else {
+            // Файл головніший за те, що в редакторі: він і є єдиним джерелом
+            const saved = host.vfs.read(`${ROOT}/main.lua`);
+            if (saved) editor.setCode(new TextDecoder().decode(saved));
         }
+        editor.setFile(`${ROOT}/main.lua`);
         refreshFiles();
     } catch (error) {
         // Повідомлення має бути на екрані пристрою, а не лише в консолі:

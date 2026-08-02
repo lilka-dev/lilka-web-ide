@@ -375,5 +375,35 @@ async function runScript(code: string, options: { budget?: number } = {}) {
     ok(pixels[80 * W + 100] === 0xffff, 'центр кола на місці після відкидання дробу');
 }
 
+// 23. state зберігається між запусками через файл поруч зі скриптом
+{
+    const memory = createSharedMemory(W, H);
+    const runtime = new LuaRuntime({
+        memory,
+        fonts,
+        statusBarHeight: profile.canvas.statusBarHeight,
+        defaultFont: board.defaultFont,
+        onPrint: () => {},
+    });
+    await runtime.prepare();
+    runtime.loadFiles('/sd/гра.lua', []);
+    runtime.run(`
+        state.score = 42
+        state.name = "Богдан"
+        state.save()
+    `);
+
+    // Файл .state має з'явитися поруч зі скриптом
+    const device = (runtime as unknown as { device: { vfs: { read(path: string): Uint8Array | null } } }).device;
+    const saved = device.vfs.read('/sd/гра.state');
+    runtime.close();
+
+    ok(saved !== null, 'файл стану створено поруч зі скриптом');
+    const text = saved ? new TextDecoder().decode(saved) : '';
+    // Формат дослівно як у прошивці: по три рядки на значення
+    ok(text.includes('number'), `формат прошивки: ключ, тип, значення`);
+    ok(text.includes('Богдан'), 'рядкові значення зберігаються');
+}
+
 console.log(fails === 0 ? '✔ рантайм: усі перевірки пройдено' : `✖ рантайм: ${fails} перевірок не пройдено`);
 process.exit(fails ? 1 : 0);
