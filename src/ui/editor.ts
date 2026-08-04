@@ -285,14 +285,24 @@ export function createEditor(initialCode: string): EditorPanel {
         saveState.classList.add('editor__save--pending');
         if (saveTimer) clearTimeout(saveTimer);
         saveTimer = setTimeout(() => {
-            saveHandler(currentText());
+            if (active === 'blockly') {
+                if (blocks) blocksSaveHandler(blocks.save(), blocks.toLua());
+            } else {
+                saveHandler(currentText());
+            }
             setSaved();
         }, 600);
     }
 
     function saveNow(): void {
         if (saveTimer) clearTimeout(saveTimer);
-        saveHandler(currentText());
+        // У режимі блоків код у файлі належить блокам: збереження текстового
+        // редактора затерло б його порожнім вмістом
+        if (active === 'blockly') {
+            if (blocks) blocksSaveHandler(blocks.save(), blocks.toLua());
+        } else {
+            saveHandler(currentText());
+        }
         setSaved();
     }
 

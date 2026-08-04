@@ -147,6 +147,25 @@ export function createBlocklyEditor(options: { onChange: () => void }): BlocklyE
         }),
     });
 
+    /*
+     * На порожньому полі одразу лежать «щокадру» і «малювати».
+     *
+     * Без них незрозуміло, куди складати решту: блок сам по собі нічого не
+     * робить, бо його нікому виконувати. А порожнє поле про це не каже.
+     */
+    Blockly.serialization.workspaces.load(
+        {
+            blocks: {
+                languageVersion: 0,
+                blocks: [
+                    { type: 'lilka_update', x: 40, y: 40 },
+                    { type: 'lilka_draw', x: 40, y: 190 },
+                ],
+            },
+        },
+        workspace,
+    );
+
     workspace.addChangeListener((event) => {
         // Перетягування й вибір коду не міняють, тож зайвого збереження не треба
         if (event.isUiEvent) return;
@@ -161,6 +180,19 @@ export function createBlocklyEditor(options: { onChange: () => void }): BlocklyE
             if (!body.trim()) return '';
 
             /*
+             * Прошивка вимагає ОБИДВА колбеки: `AbstractLuaRunnerApp::execute()`
+             * перевіряє `if not lilka.update or not lilka.draw` і мовчки не
+             * запускає цикл, якщо бракує хоч одного.
+             *
+             * Для блоків це пастка: людина складає лише «малювати» — цілком
+             * розумну програму — і нічого не відбувається. Тому відсутній
+             * колбек дописується порожнім.
+             */
+            const missing: string[] = [];
+            if (!body.includes('function lilka.update')) missing.push('function lilka.update(delta)\nend\n');
+            if (!body.includes('function lilka.draw')) missing.push('function lilka.draw(delta)\nend\n');
+
+            /*
              * Стан кнопок читається ОДИН раз на кадр.
              *
              * `just_pressed` у прошивці скидається при читанні. Якби кожен
@@ -170,13 +202,14 @@ export function createBlocklyEditor(options: { onChange: () => void }): BlocklyE
             const needsKeys = body.includes('__keys');
             const header =
                 '-- Згенеровано з блоків. Правки тут зникнуть при наступній зміні блоків.\n\n';
+            const full = body + (missing.length ? '\n' + missing.join('\n') : '');
 
-            if (!needsKeys) return header + body;
+            if (!needsKeys) return header + full;
 
             return (
                 header +
                 'local __keys = controller.get_state()\n\n' +
-                body.replace(
+                full.replace(
                     /function lilka\.update\(delta\)\n/,
                     'function lilka.update(delta)\n    __keys = controller.get_state()\n',
                 )

@@ -372,7 +372,11 @@ async function runEditorCode(): Promise<void> {
     const path = editor.isBlocksMode() ? `${ROOT}/main.lua` : scriptPath();
 
     if (editor.isBlocksMode() && !code.trim()) {
-        editor.print('Поки немає блоків. Перетягніть «щокадру» або «малювати» з панелі ліворуч.', 'err');
+        editor.print(
+            'Блоки порожні. Покладіть щось УСЕРЕДИНУ «малювати» або «щокадру» — ' +
+                'блок сам по собі не виконується.',
+            'err',
+        );
         return;
     }
 

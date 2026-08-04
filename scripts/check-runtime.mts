@@ -405,5 +405,31 @@ async function runScript(code: string, options: { budget?: number } = {}) {
     ok(text.includes('Богдан'), 'рядкові значення зберігаються');
 }
 
+// 24. Прошивка вимагає ОБИДВА колбеки: без `update` цикл не стартує навіть
+//     за наявності `draw`. Для блоків це пастка — людина складає лише
+//     «малювати» й нічого не бачить, тому генератор дописує відсутній.
+{
+    const onlyDraw = await runScript(`
+        function lilka.draw(delta)
+            display.fill_screen(colors.blue)
+        end
+    `);
+    ok(onlyDraw.result.reason === 'no-loop', `лише draw — цикл не стартує: "${onlyDraw.result.reason}"`);
+
+    const both = await runScript(`
+        local n = 0
+        function lilka.draw(delta)
+            display.fill_screen(colors.blue)
+        end
+        function lilka.update(delta)
+            n = n + 1
+            if n >= 3 then util.exit() end
+        end
+    `);
+    let painted = 0;
+    for (const value of both.pixels) if (value !== 0) painted++;
+    ok(painted > 60000, `з обома колбеками екран залито: ${painted} пікселів`);
+}
+
 console.log(fails === 0 ? '✔ рантайм: усі перевірки пройдено' : `✖ рантайм: ${fails} перевірок не пройдено`);
 process.exit(fails ? 1 : 0);
