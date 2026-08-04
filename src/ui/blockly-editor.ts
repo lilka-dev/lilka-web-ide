@@ -26,7 +26,26 @@ function registerBlocks(): void {
     if (registered) return;
     registered = true;
 
-    Blockly.defineBlocksWithJsonArray(BLOCKS.map((block) => block.definition));
+    /*
+     * Тіні вписуються в аргументи блока.
+     *
+     * Blockly очікує їх усередині опису входу, а не окремим полем — тому
+     * генератор кладе їх поруч, а тут вони зводяться докупи.
+     */
+    const definitions = BLOCKS.map((block) => {
+        if (!block.shadows) return block.definition;
+
+        const definition = { ...block.definition } as {
+            args0?: Array<{ name?: string; type?: string }>;
+        };
+        definition.args0 = definition.args0?.map((arg) => {
+            const shadow = arg.name ? (block.shadows as Record<string, object>)[arg.name] : undefined;
+            return shadow ? { ...arg, ...shadow } : arg;
+        });
+        return definition;
+    });
+
+    Blockly.defineBlocksWithJsonArray(definitions);
 
     for (const block of BLOCKS) {
         // Життєвий цикл: тіло блока стає тілом функції
@@ -34,6 +53,28 @@ function registerBlocks(): void {
             luaGenerator.forBlock[block.type] = (b) => {
                 const body = luaGenerator.statementToCode(b, 'BODY') || '';
                 return `function ${block.target}(delta)\n${body}end\n\n`;
+            };
+            continue;
+        }
+
+        if (block.special === 'on_button') {
+            /*
+             * Подія перетворюється на перевірку всередині `lilka.update`.
+             *
+             * Прошивка не має подій — є лише кадровий цикл. Тому блок збирає
+             * власну функцію оновлення, а якщо в програмі вже є блок
+             * «щокадру», обидві частини зливаються в одну при складанні
+             * тексту.
+             */
+            luaGenerator.forBlock[block.type] = (b) => {
+                const name = b.getFieldValue('BUTTON');
+                const body = luaGenerator.statementToCode(b, 'BODY') || '';
+                return (
+                    'function lilka.update(delta)\n' +
+                    '    __keys = controller.get_state()\n' +
+                    `    if __keys.${name}.just_pressed then\n${body}    end\n` +
+                    'end\n\n'
+                );
             };
             continue;
         }
@@ -127,10 +168,33 @@ export function createBlocklyEditor(options: { onChange: () => void }): BlocklyE
     registerBlocks();
 
     const dom = document.createElement('div');
-    dom.className = 'blockly';
+    dom.className = 'blockly-wrap';
 
-    const workspace = Blockly.inject(dom, {
+    /*
+     * Пошук по блоках.
+     *
+     * Тридцять чотири блоки в шести категоріях — це вже забагато, щоб шукати
+     * очима. Пошук показує знайдене окремою вкладкою панелі.
+     */
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'blockly__search';
+    search.placeholder = 'Пошук блока…';
+
+    const canvas = document.createElement('div');
+    canvas.className = 'blockly';
+
+    dom.append(search, canvas);
+
+    const workspace = Blockly.inject(canvas, {
         toolbox: toolboxXml(),
+        /*
+         * Blockly шукає свої картинки — кошик, стрілки масштабу — за адресою,
+         * яку не знає наперед. Без цього рядка замість них порожні уламки.
+         * Файли лежать у `public/blockly-media/`, тобто віддаються з нашого
+         * сайту, а не з чужого сервера.
+         */
+        media: `${import.meta.env.BASE_URL}blockly-media/`,
         grid: { spacing: 22, length: 3, colour: '#e4ede8', snap: true },
         zoom: { controls: true, wheel: true, startScale: 0.9, minScale: 0.4, maxScale: 1.6 },
         trashcan: true,
@@ -166,6 +230,36 @@ export function createBlocklyEditor(options: { onChange: () => void }): BlocklyE
         workspace,
     );
 
+    /** Показує знайдені блоки, або повертає звичайну панель. */
+    search.addEventListener('input', () => {
+        const query = search.value.trim().toLowerCase();
+
+        if (!query) {
+            workspace.updateToolbox(toolboxXml());
+            return;
+        }
+
+        // Шукаємо і за назвою блока, і за підказкою: людина може пам'ятати
+        // «коло», а блок зветься fill circle
+        const found = BLOCKS.filter((block) => {
+            const definition = block.definition as { message0?: string; tooltip?: string };
+            const haystack = [
+                block.type,
+                block.call ?? '',
+                definition.message0 ?? '',
+                definition.tooltip ?? '',
+            ]
+                .join(' ')
+                .toLowerCase();
+            return haystack.includes(query);
+        });
+
+        const blocksXml = found.map((block) => `<block type="${block.type}"></block>`).join('');
+        workspace.updateToolbox(
+            `<xml><category name="Знайдено: ${found.length}" colour="#0e7c86">${blocksXml}</category></xml>`,
+        );
+    });
+
     workspace.addChangeListener((event) => {
         // Перетягування й вибір коду не міняють, тож зайвого збереження не треба
         if (event.isUiEvent) return;
@@ -176,7 +270,7 @@ export function createBlocklyEditor(options: { onChange: () => void }): BlocklyE
         dom,
 
         toLua() {
-            const body = luaGenerator.workspaceToCode(workspace);
+            let body = luaGenerator.workspaceToCode(workspace);
             if (!body.trim()) return '';
 
             /*
@@ -199,6 +293,21 @@ export function createBlocklyEditor(options: { onChange: () => void }): BlocklyE
              * блок робив власний `controller.get_state()`, спрацював би лише
              * перший, а решта мовчки не працювала б.
              */
+            /*
+             * Кілька блоків-подій дають кілька `function lilka.update` — а в
+             * Lua друге оголошення просто затирає перше. Тому тіла зливаються
+             * в одну функцію.
+             */
+            const updates = [...body.matchAll(/function lilka\.update\(delta\)\n([\s\S]*?)\nend\n/g)];
+            if (updates.length > 1) {
+                const merged = updates
+                    .map((match) => match[1].replace(/^\s*__keys = controller\.get_state\(\)\n/, ''))
+                    .join('\n');
+                body =
+                    body.replace(/function lilka\.update\(delta\)\n[\s\S]*?\nend\n/g, '') +
+                    `function lilka.update(delta)\n    __keys = controller.get_state()\n${merged}\nend\n`;
+            }
+
             const needsKeys = body.includes('__keys');
             const header =
                 '-- Згенеровано з блоків. Правки тут зникнуть при наступній зміні блоків.\n\n';

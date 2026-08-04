@@ -1432,3 +1432,30 @@ body {
     font-family: inherit !important;
     font-size: 13px !important;
 }
+
+/* Пошук над панеллю блоків */
+.blockly-wrap {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.blockly__search {
+    appearance: none;
+    margin: 0;
+    padding: 8px 12px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--ink);
+    background: var(--card);
+    border: none;
+    border-bottom: 1px solid var(--edge);
+    outline: none;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+.blockly-wrap .blockly {
+    flex: 1;
+    min-height: 0;
+}

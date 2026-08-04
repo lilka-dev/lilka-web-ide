@@ -162,11 +162,42 @@ for (const category of CATEGORIES) {
             });
         });
 
+        /*
+         * Тіньові значення в гніздах.
+         *
+         * Без них гніздо порожнє, і незрозуміло, що туди можна написати —
+         * доводиться здогадуватись, що спершу треба перетягнути блок числа.
+         * Тінь видно одразу, у ній можна друкувати, а якщо перетягнути щось
+         * своє — вона зникає.
+         *
+         * Розумні значення за замовчуванням: координати посеред екрана,
+         * радіус видимий, колір білий. Так перший запуск одразу щось показує.
+         */
+        const DEFAULTS = {
+            x: 140, y: 120, x1: 40, y1: 40, x2: 240, y2: 200, x3: 140, y3: 40,
+            r: 30, rx: 60, ry: 40, w: 80, h: 60,
+            r1: 20, r2: 40, start_angle: 0, end_angle: 180,
+            size: 2, sec: 1, frequency: 440, duration: 200,
+        };
+
+        const shadows = {};
+        fn.params.forEach((param) => {
+            const key = param.name.toUpperCase();
+            if (param.name === 'color' || param.name === 'bg') {
+                shadows[key] = { shadow: { type: 'lilka_color', fields: { COLOR: 'white' } } };
+            } else {
+                shadows[key] = {
+                    shadow: { type: 'math_number', fields: { NUM: DEFAULTS[param.name] ?? 0 } },
+                };
+            }
+        });
+
         blocks.push({
             type,
             call: qualified,
             params: fn.params.map((param) => param.name.toUpperCase()),
             returns,
+            shadows,
             colour: category.colour,
             definition: {
                 type,
@@ -181,6 +212,30 @@ for (const category of CATEGORIES) {
     }
 
     if (category.id === 'control') {
+        /*
+         * Подія «коли натиснули» замість трьох блоків.
+         *
+         * Раніше для реакції на кнопку треба було скласти «щокадру» + «якщо» +
+         * «кнопку щойно натиснули». Це три дії там, де думка одна.
+         */
+        blocks.push({
+            type: 'lilka_on_button',
+            special: 'on_button',
+            colour: category.colour,
+            definition: {
+                type: 'lilka_on_button',
+                message0: 'коли натиснули %1 %2 %3',
+                args0: [
+                    { type: 'field_dropdown', name: 'BUTTON', options: BUTTONS },
+                    { type: 'input_dummy' },
+                    { type: 'input_statement', name: 'BODY' },
+                ],
+                colour: category.colour,
+                tooltip: 'Виконується один раз на кожне натискання',
+            },
+        });
+        entries.push('lilka_on_button');
+
         // Читання кнопок — не пряма функція, а зручний блок поверх get_state
         blocks.push({
             type: 'lilka_button_pressed',
@@ -301,6 +356,8 @@ const body =
     `    returns?: boolean;\n` +
     `    /** Особливі блоки з власним генератором коду. */\n` +
     `    special?: string;\n` +
+    `    /** Тіньові значення в гніздах: видно одразу, можна друкувати. */\n` +
+    `    shadows?: Record<string, unknown>;\n` +
     `    target?: string;\n` +
     `    colour: string;\n` +
     `    definition: Record<string, unknown>;\n` +

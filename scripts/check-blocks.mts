@@ -89,6 +89,33 @@ for (const category of TOOLBOX) {
     ok(category.blocks.length > 0, `категорія «${category.name}» не порожня`);
 }
 
+// 7. Тіньові значення в гніздах чисел — без них незрозуміло, що туди писати
+{
+    const circle = BLOCKS.find((item) => item.type === 'lilka_display_fill_circle');
+    ok(circle?.shadows !== undefined, 'у fill_circle є тіньові значення');
+
+    const shadows = circle?.shadows as Record<string, { shadow?: { type?: string } }> | undefined;
+    ok(shadows?.X?.shadow?.type === 'math_number', 'координата має тінь числа');
+    ok(shadows?.COLOR?.shadow?.type === 'lilka_color', 'колір має тінь кольору');
+
+    // Значення за замовчуванням мають бути осмислені: коло посеред екрана,
+    // а не в кутку з нульовим радіусом
+    const fields = (shadows?.X?.shadow as { fields?: { NUM?: number } })?.fields;
+    ok(fields?.NUM === 140, `x за замовчуванням посеред екрана: ${fields?.NUM}`);
+}
+
+// 8. Блок-подія: одна дія замість трьох
+{
+    const event = BLOCKS.find((item) => item.special === 'on_button');
+    ok(event !== undefined, 'є блок «коли натиснули»');
+
+    const definition = event?.definition as { args0?: Array<{ type?: string }> };
+    ok(
+        definition?.args0?.some((arg) => arg.type === 'input_statement'),
+        'блок-подія приймає інші блоки всередину',
+    );
+}
+
 console.log(
     fails === 0
         ? `✔ блоки: усі перевірки пройдено (${BLOCKS.length} блоків)`
