@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit",
     "gen:api": "node scripts/gen-api-spec.mjs --out src/generated/lilka-api.json",
     "gen:fonts": "node scripts/gen-fonts.mjs --fetch",
-    "check": "npm run check:primitives && npm run check:fonts && npm run check:images && npm run check:vfs && npm run check:widgets && npm run check:completions && npm run check:runtime",
+    "check": "npm run check:primitives && npm run check:fonts && npm run check:images && npm run check:vfs && npm run check:widgets && npm run check:completions && npm run check:blocks && npm run check:runtime",
     "check:primitives": "node --experimental-strip-types scripts/check-primitives.mts",
     "check:fonts": "node --experimental-strip-types scripts/check-fonts.mts",
     "render:testcard": "node --experimental-strip-types scripts/render-testcard.mts",
@@ -25,7 +25,9 @@
     "check:widgets": "node --experimental-strip-types scripts/check-widgets.mts",
     "gen:icons": "node scripts/gen-icons.mjs",
     "gen:completions": "node scripts/gen-completions.mjs",
-    "check:completions": "node --experimental-strip-types scripts/check-completions.mts"
+    "check:completions": "node --experimental-strip-types scripts/check-completions.mts",
+    "gen:blocks": "node scripts/gen-blocks.mjs",
+    "check:blocks": "node --experimental-strip-types scripts/check-blocks.mts"
   },
   "devDependencies": {
     "typescript": "~5.6.3",
@@ -40,6 +42,7 @@
     "@codemirror/state": "^6.7.1",
     "@codemirror/view": "^6.43.7",
     "@lezer/highlight": "^1.2.3",
+    "blockly": "^13.2.0",
     "codemirror": "^6.0.2",
     "coi-serviceworker": "~0.1.7",
     "fflate": "^0.8.3",

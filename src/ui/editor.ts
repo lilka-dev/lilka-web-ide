@@ -23,12 +23,7 @@ interface LanguageTab {
 }
 
 const LANGUAGES: LanguageTab[] = [
-    {
-        id: 'blockly',
-        title: 'Blockly',
-        ready: false,
-        note: 'Блоки з генераторами Lua та JavaScript. Blockly має обидва генератори з коробки, лишається зробити блоки для API Лілки.',
-    },
+    { id: 'blockly', title: 'Блоки', ready: true },
     { id: 'lua', title: 'Lua', ready: true },
     {
         id: 'mjs',
@@ -60,6 +55,12 @@ export interface EditorPanel {
     onRunOnDevice(handler: () => void): void;
     /** Підміняє консоль середовища консоллю Лілки. */
     showConsole(panel: HTMLElement | null): void;
+    /** Зберігає стан блоків і згенерований код. */
+    onBlocksSave(handler: (state: string, lua: string) => void): void;
+    setBlocks(state: string): void;
+    /** Код із блоків — потрібен для запуску. */
+    blocksLua(): string;
+    isBlocksMode(): boolean;
     /** Вибрано приклад — можливо, із супутніми файлами. */
     onExample(handler: (example: (typeof EXAMPLES)[number]) => void): void;
 }
@@ -84,6 +85,40 @@ export function createEditor(initialCode: string): EditorPanel {
      */
     let code: CodeEditor | null = null;
     let pendingText = initialCode;
+
+    /**
+     * Блоковий редактор.
+     *
+     * Вантажиться на вимогу — при першому переході на вкладку. Blockly важить
+     * ще більше за CodeMirror, і тягнути його в кожне завантаження сторінки
+     * заради вкладки, на яку можуть жодного разу не натиснути, було б марно.
+     */
+    let blocks: import('./blockly-editor.ts').BlocklyEditor | null = null;
+    let blocksLoading = false;
+    let blocksText = '';
+
+    const blocksSlot = document.createElement('div');
+    blocksSlot.className = 'editor__blocks';
+    blocksSlot.hidden = true;
+
+    let blocksSaveHandler: (state: string, lua: string) => void = () => {};
+
+    async function ensureBlocks(): Promise<void> {
+        if (blocks || blocksLoading) return;
+        blocksLoading = true;
+
+        const { createBlocklyEditor } = await import('./blockly-editor.ts');
+        blocks = createBlocklyEditor({
+            onChange: () => {
+                if (!blocks) return;
+                blocksSaveHandler(blocks.save(), blocks.toLua());
+                setSaved();
+            },
+        });
+        blocksSlot.append(blocks.dom);
+        if (blocksText) blocks.load(blocksText);
+        blocks.resize();
+    }
 
     const stub = document.createElement('textarea');
     stub.className = 'editor__code editor__code--stub';
@@ -119,8 +154,17 @@ export function createEditor(initialCode: string): EditorPanel {
         }
 
         const ready = language.ready;
-        (code?.dom ?? stub).hidden = !ready;
-        if (ready) void code?.setLanguage(id === 'mjs' ? 'js' : 'lua');
+        const isBlocks = id === 'blockly';
+
+        (code?.dom ?? stub).hidden = !ready || isBlocks;
+        blocksSlot.hidden = !isBlocks;
+        fileBar.hidden = isBlocks;
+
+        if (isBlocks) {
+            void ensureBlocks().then(() => blocks?.resize());
+        } else if (ready) {
+            void code?.setLanguage(id === 'mjs' ? 'js' : 'lua');
+        }
         placeholder.hidden = ready;
         runButton.disabled = !ready;
         if (!ready) {
@@ -259,7 +303,7 @@ export function createEditor(initialCode: string): EditorPanel {
     const replSlot = document.createElement('div');
     replSlot.className = 'editor__repl-slot';
 
-    root.append(tabs, bar, fileBar, stub, placeholder, output, replSlot);
+    root.append(tabs, bar, fileBar, stub, blocksSlot, placeholder, output, replSlot);
 
     void (async () => {
         const { createCodeEditor } = await import('./code-editor.ts');
@@ -325,6 +369,15 @@ export function createEditor(initialCode: string): EditorPanel {
             deviceRunButton.hidden = !ready;
         },
         onRunOnDevice: (handler) => deviceRunButton.addEventListener('click', handler),
+        onBlocksSave: (handler) => {
+            blocksSaveHandler = handler;
+        },
+        setBlocks: (state) => {
+            blocksText = state;
+            blocks?.load(state);
+        },
+        blocksLua: () => blocks?.toLua() ?? '',
+        isBlocksMode: () => active === 'blockly',
         showConsole: (panel) => {
             replSlot.textContent = '';
             output.hidden = panel !== null;

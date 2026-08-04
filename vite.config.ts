@@ -18,6 +18,9 @@ export default defineConfig({
                  * потрібен на секунду пізніше.
                  */
                 manualChunks: {
+                    // Blockly важить ще більше за редактор коду, тож теж окремо:
+                    // на вкладку блоків можуть жодного разу не натиснути
+                    blockly: ['blockly/core', 'blockly/lua', 'blockly/blocks', 'blockly/msg/uk'],
                     editor: [
                         'codemirror',
                         '@codemirror/view',

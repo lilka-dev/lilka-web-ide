@@ -1406,3 +1406,29 @@ body {
     color: #9cb3a8;
     white-space: nowrap;
 }
+
+/* ------------------------------------------------- блоковий редактор ---- */
+
+.editor__blocks {
+    height: 62vh;
+    min-height: 380px;
+    border: 1px solid var(--edge);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.blockly {
+    width: 100%;
+    height: 100%;
+}
+
+/* Панель категорій у кольорах середовища, а не типових синіх */
+.blocklyToolboxDiv {
+    border-right: 1px solid var(--edge);
+    padding-top: 6px;
+}
+
+.blocklyTreeLabel {
+    font-family: inherit !important;
+    font-size: 13px !important;
+}
