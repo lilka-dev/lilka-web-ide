@@ -10,6 +10,7 @@
  */
 
 import { color565 } from '../emulator/color.ts';
+import { joinPath, dirname } from '../emulator/vfs.ts';
 import { Transform } from '../emulator/transform.ts';
 import { fCos360, fSin360 } from '../emulator/fmath.ts';
 import { NOTES } from '../generated/notes.ts';
@@ -106,11 +107,18 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
         fill_circle: impl('display.fill_circle', (x: number, y: number, r: number, c: number) =>
             fb().fillCircle(i16(x), i16(y), i16(r), i16(c)),
         ),
-        // Назва з однією «l» — саме так вона пишеться в прошивці
-        draw_elipse: impl('display.draw_elipse', (x: number, y: number, rx: number, ry: number, c: number) =>
+        /*
+         * Дві «l». Прошивка реєструє саме `draw_ellipse` і `fill_ellipse`
+         * (lualilka_display.cpp), і ніколи не мала іншого написання. Одна «l»
+         * — помилка в анотації keira/addons/lualilka/library/display.lua,
+         * звідки її свого часу перетягнув генератор. Виправлення живе в
+         * FIRMWARE_RENAMES у scripts/gen-api-spec.mjs, тож автодоповнення й
+         * блоки теж кажуть «ellipse».
+         */
+        draw_ellipse: impl('display.draw_ellipse', (x: number, y: number, rx: number, ry: number, c: number) =>
             fb().drawEllipse(i16(x), i16(y), i16(rx), i16(ry), i16(c)),
         ),
-        fill_elipse: impl('display.fill_elipse', (x: number, y: number, rx: number, ry: number, c: number) =>
+        fill_ellipse: impl('display.fill_ellipse', (x: number, y: number, rx: number, ry: number, c: number) =>
             fb().fillEllipse(i16(x), i16(y), i16(rx), i16(ry), i16(c)),
         ),
         draw_arc: impl(
@@ -169,9 +177,10 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
         }),
         sleep: impl('util.sleep', (sec: number) => hooks.sleepMs(Math.max(0, Math.round(sec * 1000)))),
         time: impl('util.time', () => hooks.now() / 1000),
-        // На залізі це справжні байти купи ESP32. У браузері таких чисел немає,
-        // тому повертаються значення з board.json — щоб програми, які їх
-        // друкують, не падали, але й не вводили в оману правдоподібними цифрами.
+        // На залізі це справжні байти купи ESP32. У браузері такого числа не
+        // існує, а правдоподібне вводило б в оману: програма вирішувала б, що
+        // пам'ять скінчилася або що її вдосталь, спираючись на вигадку. Тому
+        // нуль — виклик не падає, але й нічого не обіцяє.
         free_ram: impl('util.free_ram', () => 0),
         total_ram: impl('util.total_ram', () => 0),
     };
@@ -215,7 +224,10 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
             ((num(v) - num(i1)) * (num(o2) - num(o1))) / (num(i2) - num(i1)) + num(o1),
         ),
         abs: impl('math.abs', (v: number) => Math.abs(num(v))),
-        sign: impl('math.sign', (v: number) => Math.sign(num(v))),
+        // Прошивка кладе аргумент у int ДО порівняння:
+        // `int value = luaL_checknumber(L, 1)`. Тому math.sign(0.5) там 0, а
+        // не 1 — дріб відкидається у бік нуля разом зі знаком.
+        sign: impl('math.sign', (v: number) => Math.sign(Math.trunc(num(v)))),
         sqrt: impl('math.sqrt', (v: number) => Math.sqrt(num(v))),
         pow: impl('math.pow', (base: number, exp: number) => Math.pow(num(base), num(exp))),
         min: impl('math.min', (t: unknown) => Math.min(...table(t))),
@@ -381,16 +393,33 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
         return file;
     };
 
+    /**
+     * Порт `fopen`. Один на два простори імен: `sdcard.open` і `fs.open`
+     * різняться лише тим, як рахується шлях, — метатаблиця файлового об'єкта
+     * в прошивці буквально одна (`#define FILE_OBJECT "File"` в обох
+     * заголовках, тож другий `luaL_newmetatable` повертає вже створену).
+     *
+     * Режими читаються так само, як у C:
+     *   "r" — файлу немає, отже і об'єкта немає (fopen дає NULL);
+     *   "w" — файл обрізається до нуля, навіть якщо вже існував;
+     *   "a" — позиція одразу в кінці, і туди ж лягає весь запис.
+     */
+    const openFileAt = (full: string, mode: string): number => {
+        const exists = device.vfs.exists(full);
+        const truncating = mode.includes('w');
+        const appending = mode.includes('a');
+        const writing = truncating || appending;
+        if (truncating || (appending && !exists)) device.writeFile(full, new Uint8Array(0));
+        const size = appending ? (device.vfs.read(full)?.length ?? 0) : 0;
+        const id = nextFileId++;
+        openFiles.set(id, { path: full, mode, position: size, ok: exists || writing });
+        return id;
+    };
+
     const sdcard = {
-        __open: impl('sdcard.open', (path: string, mode = 'r') => {
-            const full = sdPath(path, 'sdcard.open');
-            const exists = device.vfs.exists(full);
-            const writing = mode.includes('w') || mode.includes('a');
-            if (writing && !exists) device.writeFile(full, new Uint8Array(0));
-            const id = nextFileId++;
-            openFiles.set(id, { path: full, mode, position: 0, ok: exists || writing });
-            return id;
-        }),
+        __open: impl('sdcard.open', (path: string, mode = 'r') =>
+            openFileAt(sdPath(path, 'sdcard.open'), mode),
+        ),
         // exists() у прошивці — це !!filePointer, тобто «чи вдалося відкрити»,
         // а не «чи існує шлях»
         __exists: (handle: unknown) => fileOf(handle).ok,
@@ -441,6 +470,63 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
             if (!device.vfs.rename(source, destination)) {
                 throw new Error(`Не вдалося перейменувати ${source}`);
             }
+        }),
+    };
+
+    /**
+     * Шлях зі світу `fs.*` — порт `luapath_to_path`.
+     *
+     * Три правила прошивки, усі три важливі: порожній рядок — це корінь,
+     * абсолютний шлях лишається як є, відносний рахується від теки скрипта.
+     * Ніякого "/sd" попереду тут НЕ додається — цим `fs` і відрізняється від
+     * старішого `sdcard`, який склеює префікс без роздільника.
+     */
+    const fsPath = (path: string): string => {
+        const value = String(path);
+        return value === '' ? '/' : device.resolveResourcePath(value);
+    };
+
+    /**
+     * Файлові операції зі світу `fs.*` (`lualilka_fs.cpp`).
+     *
+     * Простір імен, якого в емуляторі бракувало: прошивка реєструє глобальний
+     * `fs`, анотації його описують, а специфікація його не бачила, бо була
+     * знята зі старішого зрізу keira.
+     */
+    const fs = {
+        __open: impl('fs.open', (path: string, mode = 'r') => openFileAt(fsPath(path), mode)),
+        ls: impl('fs.ls', (path: string) => {
+            const full = fsPath(path);
+            // Помилкою прошивка вважає саме невдалий opendir. Порожній
+            // каталог невдачею не є — на відміну від sdcard.ls, тут
+            // повертається порожня таблиця.
+            const info = device.vfs.stat(full);
+            if (!info || !info.isDirectory) throw new Error(`Не вдалося прочитати каталог ${full}`);
+            return device.vfs.list(full);
+        }),
+        remove: impl('fs.remove', (path: string) => {
+            const full = fsPath(path);
+            if (!device.vfs.remove(full)) throw new Error(`Не вдалося видалити ${full}`);
+        }),
+        rename: impl('fs.rename', (from: string, to: string) => {
+            const source = fsPath(from);
+            const destination = fsPath(to);
+            if (!device.vfs.rename(source, destination)) {
+                throw new Error(`Не вдалося перейменувати ${source}`);
+            }
+        }),
+        // joinpath — це FileUtils::joinPath, той самий, що вже є у vfs.ts.
+        // Шляхи тут не розв'язуються: прошивка просто склеює два рядки.
+        joinpath: impl('fs.joinpath', (left: string, right: string) =>
+            joinPath(String(left), String(right)),
+        ),
+        mkpath: impl('fs.mkpath', (path: string) => {
+            const full = fsPath(path);
+            // Прошивка пропускає корінь "/<монтування>": на ньому mkdir не
+            // викликається взагалі, і якщо іншого роздільника в шляху немає —
+            // виклик тихо нічого не робить.
+            if (dirname(full) === '/') return;
+            device.vfs.mkdir(full);
         }),
     };
 
@@ -558,21 +644,29 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
      * Формат — той самий текстовий, що в `lualilka_state_save`: по три рядки
      * на значення (ключ, тип, значення). Завдяки цьому файл `.state`
      * переноситься між браузером і залізом.
+     *
+     * Тут лише доступ до файлу. Що саме означають `save`, `reset` і `clear` —
+     * вирішує преамбула, бо всі три працюють із глобальною змінною `state`, а
+     * до неї з боку JS діла немає. Важливо, що це три РІЗНІ дії: `clear`
+     * видаляє файл, `reset` його перечитує.
      */
     const state = {
         __path: impl('state.path', () => device.scriptPath.replace(/\.[^./]*$/, '.state')),
+        __exists: () => device.vfs.exists(state.__path()),
         __save: impl('state.save', (serialized: string) => {
             device.writeFile(state.__path(), encoder.encode(serialized));
         }),
-        __load: impl('state.load', () => {
+        __load: () => {
             const bytes = device.vfs.read(state.__path());
             return bytes ? decoder.decode(bytes) : '';
-        }),
-        __clear: impl('state.clear', () => {}),
-        __reset: impl('state.reset', () => {
+        },
+        // clear() у прошивці — це remove(path) плюс state = nil
+        __clear: impl('state.clear', () => {
             device.vfs.remove(state.__path());
         }),
     };
+    // reset() цілком живе в преамбулі: він лише перечитує файл
+    implemented.add('state.reset');
 
     /**
      * Тимчасове розширення, якого немає на залізі: створення зображення в
@@ -655,8 +749,16 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
         }),
     };
 
+    /**
+     * `console.print` прошивки. Рядок збирається в преамбулі, бо правила
+     * перетворення значень на текст знає лише Lua, а не JS.
+     *
+     * В анотаціях keira цього простору імен немає взагалі — його додає
+     * FIRMWARE_EXTRAS у scripts/gen-api-spec.mjs, бо на залізі він є, і
+     * приклади в тих самих анотаціях ним користуються.
+     */
     const console = {
-        print: (s: string) => hooks.print(s),
+        print: impl('console.print', (s: string) => hooks.print(s)),
     };
 
     return {
@@ -668,6 +770,7 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
             geometry,
             resources,
             sdcard,
+            fs,
             state,
             transforms,
             buzzer,

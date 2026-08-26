@@ -45,10 +45,28 @@ do
     display.height = size[2]
 end
 
+--[[
+    Перетворення значення на текст правилами прошивки.
+
+    display.print і console.print влаштовані однаково:
+        lua_isstring(v) -> lua_tostring(v), інакше lua_typename(тип v)
+    lua_isstring істинна і для чисел, тож числа проходять звичайним
+    перетворенням Lua: ціле 5 дає "5", дробове 5.0 дає "5.0".
+
+    А от усе інше друкується НАЗВОЮ ТИПУ. display.print(true) на залізі
+    малює "boolean", а не "true"; таблиця стає "table" без адреси. Звичайний
+    print цього не робить — він стандартний, з tostring.
+--]]
+local function keiraToString(value)
+    local kind = type(value)
+    if kind == "string" or kind == "number" then return tostring(value) end
+    return kind
+end
+
 function display.print(...)
     local parts = {}
     for i = 1, select("#", ...) do
-        parts[i] = tostring((select(i, ...)))
+        parts[i] = keiraToString((select(i, ...)))
     end
     api.display.__print(table.concat(parts))
 end
@@ -66,8 +84,13 @@ end
 resources = toTable(api.resources)
 sandbox = toTable(api.sandbox)
 
--- Файловий об'єкт sdcard.open(). У Lua немає close(): файл закривається
--- складальником сміття через __gc. У mJS close() є — це розбіжність мов.
+-- Файловий об'єкт sdcard.open() і fs.open(). У Lua немає close(): файл
+-- закривається складальником сміття через __gc. У mJS close() є — це
+-- розбіжність мов.
+--
+-- Метатаблиця одна на два простори імен, і це не спрощення: у прошивці
+-- lualilka_fs.h і lualilka_sdcard.h оголошують FILE_OBJECT тим самим рядком
+-- "File", тож другий luaL_newmetatable повертає вже створену таблицю.
 local File = {}
 File.__index = File
 function File:size() return api.sdcard.__size(self.__id) end
@@ -86,6 +109,27 @@ sdcard = {
 }
 
 --[[
+    fs.* — те, чого емулятору бракувало цілком.
+
+    Прошивка реєструє глобальний fs (lualilka_fs.cpp), анотації його
+    описують, а специфікація його не бачила: lilka-api.json був знятий зі
+    старішого зрізу keira, ще без fs.lua.
+
+    Від sdcard відрізняється розв'язанням шляху: тут працює luapath_to_path
+    (відносний шлях — від теки скрипта), а не склеювання з "/sd".
+--]]
+fs = {
+    ls = api.fs.ls,
+    remove = api.fs.remove,
+    rename = api.fs.rename,
+    joinpath = api.fs.joinpath,
+    mkpath = api.fs.mkpath,
+    open = function(path, mode)
+        return setmetatable({ __id = api.fs.__open(path, mode or "r") }, File)
+    end,
+}
+
+--[[
     Стан програми.
 
     Формат файлу дослівно повторює lualilka_state_save: по три рядки на
@@ -94,12 +138,20 @@ sdcard = {
 
     Завдяки точному формату файл .state переноситься між браузером і залізом:
     рекорд, набраний у браузері, читається на справжній Лілці.
---]]
-local stateData = {}
 
-local function serializeState()
+    Головне тут — те, чого емулятор раніше не робив: state НЕ завжди таблиця.
+    Прошивка створює глобальну змінну лише тоді, коли поруч зі скриптом лежить
+    файл .state; інакше state дорівнює nil, і програма мусить починати з
+    "state = state or {}" — саме так написано в прикладі до анотації. Порожня
+    таблиця замість nil зробила б браузер поблажливішим за залізо: програма без
+    цього рядка працювала б тут і падала на Лілці при першому ж запуску.
+--]]
+local PROTECTED_STATE_KEYS = { save = true, reset = true, clear = true, path = true }
+local state_mt
+
+local function serializeState(data)
     local parts = {}
-    for key, value in pairs(stateData) do
+    for key, value in pairs(data) do
         local kind = type(value)
         if kind == "number" then
             parts[#parts + 1] = key .. "\nnumber\n" .. string.format("%f", value)
@@ -107,18 +159,17 @@ local function serializeState()
             parts[#parts + 1] = key .. "\nstring\n" .. value
         elseif kind == "boolean" then
             parts[#parts + 1] = key .. "\nboolean\n" .. (value and "1" or "0")
-        elseif kind == "nil" then
-            parts[#parts + 1] = key .. "\nnil"
         end
-        -- таблиці та функції прошивка мовчки пропускає
+        -- таблиці та функції прошивка мовчки пропускає; nil у таблиці не
+        -- зберігається взагалі, тож гілки для нього немає і в lua_next
     end
     if #parts == 0 then return "" end
     return table.concat(parts, "\n") .. "\n"
 end
 
-local function deserializeState(text)
-    stateData = {}
-    if text == nil or text == "" then return end
+local function parseState(text)
+    local data = {}
+    if text == nil or text == "" then return data end
     local lines = {}
     for line in (text .. "\n"):gmatch("(.-)\n") do lines[#lines + 1] = line end
 
@@ -128,37 +179,85 @@ local function deserializeState(text)
         local kind = lines[i + 1]
         if key == nil or key == "" or kind == nil then break end
         if kind == "nil" then
-            stateData[key] = nil
             i = i + 2
         else
             local raw = lines[i + 2]
-            if kind == "number" then stateData[key] = tonumber(raw)
-            elseif kind == "string" then stateData[key] = raw
-            elseif kind == "boolean" then stateData[key] = raw == "1" end
+            if kind == "number" then data[key] = tonumber(raw)
+            elseif kind == "string" then data[key] = raw
+            elseif kind == "boolean" then data[key] = raw == "1" end
             i = i + 3
         end
     end
+    return data
 end
 
-state = setmetatable({}, {
-    __index = function(_, key)
-        if key == "save" then
-            return function() api.state.__save(serializeState()) end
-        elseif key == "reset" then
-            return function() stateData = {} api.state.__reset() end
-        elseif key == "clear" then
-            return function() stateData = {} end
-        elseif key == "path" then
-            return api.state.__path()
-        end
-        return stateData[key]
-    end,
-    __newindex = function(_, key, value)
-        stateData[key] = value
-    end,
-})
+--[[
+    save / reset / clear — три різні дії, і плутати їх не можна:
 
-deserializeState(api.state.__load())
+      save()  — записати теперішній state у файл;
+      reset() — ПЕРЕЧИТАТИ файл, відкинувши все незбережене
+                (lualilka_state_reset_lua викликає lualilka_state_load);
+      clear() — ВИДАЛИТИ файл і зробити state рівним nil.
+
+    Усі три працюють із глобальною змінною, а не із замиканням: reset і clear
+    її замінюють, і програма мусить побачити саме нове значення.
+--]]
+local function stateSave()
+    local current = rawget(_G, "state")
+    if type(current) ~= "table" then
+        error("таблиця state не визначена", 2)
+    end
+    api.state.__save(serializeState(current))
+end
+
+local function stateReset()
+    local data = {}
+    if api.state.__exists() then data = parseState(api.state.__load()) end
+    rawset(_G, "state", setmetatable(data, state_mt))
+end
+
+local function stateClear()
+    api.state.__clear()
+    rawset(_G, "state", nil)
+end
+
+state_mt = {
+    __index = function(_, key)
+        if key == "save" then return stateSave end
+        if key == "reset" then return stateReset end
+        if key == "clear" then return stateClear end
+        if key == "path" then return api.state.__path() end
+        return nil
+    end,
+    __newindex = function(t, key, value)
+        if PROTECTED_STATE_KEYS[key] then
+            error("неможливо перезаписати state." .. tostring(key), 2)
+        end
+        rawset(t, key, value)
+    end,
+}
+
+--[[
+    Читання стану на початку запуску.
+
+    Глобальна змінна з'являється лише за наявності файлу: у прошивці
+    lualilka_state_load викликається з LuaFileRunnerApp::run() під умовою, і
+    саме тому на першому запуску state дорівнює nil.
+
+    Чому це функція, а не просто рядок у преамбулі: преамбула виконується в
+    prepare(), коли віртуальна карта ще порожня і шлях до скрипта невідомий.
+    Читати файл там — те саме, що читати його до вставляння карти: раніше
+    саме через це стан ніколи не відновлювався. Виклик іде з LuaRuntime.run(),
+    де карта вже на місці — так само, як у прошивці стан читається перед
+    luaL_loadfile.
+--]]
+function __lilka_load_state()
+    if api.state.__exists() then
+        rawset(_G, "state", setmetatable(parseState(api.state.__load()), state_mt))
+    else
+        rawset(_G, "state", nil)
+    end
+end
 
 -- math замінюється ПОВНІСТЮ: так робить lualilka_math_register.
 -- math.huge, math.fmod, math.tointeger, math.type на Лілці відсутні.
@@ -171,7 +270,7 @@ deserializeState(api.state.__load())
 --]]
 local __m = {}
 local FLOAT_RESULT = {
-    "clamp", "lerp", "map", "abs", "sqrt", "pow", "min", "max", "sum", "avg",
+    "clamp", "lerp", "map", "abs", "sqrt", "pow",
     "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "log", "deg", "rad",
     "len", "dist",
 }
@@ -183,6 +282,39 @@ for _, name in ipairs(FLOAT_RESULT) do
 end
 for _, name in ipairs(INTEGER_RESULT) do
     __m[name] = api.math[name]
+end
+
+--[[
+    min / max / sum / avg беруть ОДНУ таблицю і читають лише її масивну
+    частину: assert_table_arg перевіряє lua_rawlen, а далі йде lua_rawgeti від
+    1 до довжини. Отже ключі-рядки туди не потрапляють — math.max{a=1, b=2} на
+    залізі не рахує двійку, а падає, бо rawlen такої таблиці нуль.
+
+    Послідовність збирається тут, у Lua: з боку JS видно вже готовий масив, і
+    жодного здогадування про те, що вважати елементом.
+--]]
+local function numberSequence(value)
+    if type(value) ~= "table" then
+        error("аргумент має бути таблицею", 3)
+    end
+    local length = rawlen(value)
+    if length == 0 then
+        error("таблиця не може бути порожньою", 3)
+    end
+    local out = {}
+    for i = 1, length do
+        local item = tonumber(rawget(value, i))
+        if item == nil then
+            error("елемент " .. i .. " не є числом", 3)
+        end
+        out[i] = item
+    end
+    return out
+end
+
+for _, name in ipairs({ "min", "max", "sum", "avg" }) do
+    local fn = api.math[name]
+    __m[name] = function(value) return fn(numberSequence(value)) + 0.0 end
 end
 
 -- random без аргументів дає дробове 0..1, з аргументами — ціле,
@@ -328,7 +460,8 @@ transforms = { new = function() return wrapTransform(api.transforms.__new()) end
 
 lilka = { fullscreen = true, show_fps = false }
 
--- Стандартний print іде в консоль середовища
+-- Стандартний print іде в консоль середовища. Він саме стандартний: прошивка
+-- його не перевизначає, тож тут працює tostring, а не правила прошивки.
 local __console_print = api.console.print
 function print(...)
     local parts = {}
@@ -337,6 +470,29 @@ function print(...)
     end
     __console_print(table.concat(parts, "\t"))
 end
+
+--[[
+    console.print — це НЕ стандартний print.
+
+    Значення перетворюються правилами lualilka_console_print (той самий
+    keiraToString, що й у display.print), розділяються табуляцією, і в кінці
+    йде перенос рядка. Тому console.print(true) друкує "boolean", а print(true)
+    друкує "true".
+
+    Простору імен console в анотаціях keira немає взагалі — хоча приклади в
+    тих самих анотаціях ним користуються: console.print(state.path) у
+    state.lua. Через це його не було ні в специфікації, ні в емуляторі, і
+    програма з console.print падала в браузері, працюючи на залізі.
+--]]
+console = {
+    print = function(...)
+        local parts = {}
+        for i = 1, select("#", ...) do
+            parts[i] = keiraToString((select(i, ...)))
+        end
+        __console_print(table.concat(parts, "\t"))
+    end,
+}
 
 --[[
     Головний цикл. Порт AbstractLuaRunnerApp::execute():
@@ -388,5 +544,48 @@ function __lilka_main()
     end
 
     return "stopped"
+end
+
+--[[
+    Збереження стану при завершенні програми.
+
+    LuaFileRunnerApp::run() після execute() дивиться на глобальний state і,
+    якщо це таблиця, сам пише її у файл — незалежно від того, чи викликала
+    програма state.save(), і навіть якщо вона впала з помилкою. Гра, яка просто
+    присвоює state.record і виходить, на залізі рекорд зберігає.
+
+    Викликається з LuaRuntime.run() у finally, щоб збігтися з первотвором і за
+    цією умовою теж.
+--]]
+function __lilka_save_state()
+    local current = rawget(_G, "state")
+    if type(current) ~= "table" then return end
+    api.state.__save(serializeState(current))
+end
+
+--[[
+    Перехоплення "state = {...}".
+
+    lualilka_state_register вішає на глобальну таблицю __newindex, який
+    помічає присвоєння в state і чіпляє метатаблицю зі save/reset/clear/path.
+    Без цього документований рядок "state = state or {}" при першому запуску
+    дав би звичайну таблицю — без save() і без збереження на диск.
+
+    Тонкість, яка є і в прошивці: __newindex спрацьовує лише тоді, коли ключа в
+    таблиці ще немає. Тому метатаблицю отримує ПЕРШЕ присвоєння, а наступні,
+    коли глобальна змінна вже існує, проходять повз хук.
+
+    Ставиться в самому кінці преамбули — як lualilka_state_register, який у
+    luaSetup викликається останнім, уже після всіх інших реєстрацій.
+--]]
+do
+    local meta = getmetatable(_G) or {}
+    meta.__newindex = function(t, key, value)
+        if key == "state" and type(value) == "table" then
+            setmetatable(value, state_mt)
+        end
+        rawset(t, key, value)
+    end
+    setmetatable(_G, meta)
 end
 `;

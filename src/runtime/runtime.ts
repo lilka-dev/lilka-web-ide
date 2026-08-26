@@ -123,6 +123,15 @@ export class LuaRuntime {
         const device = this.device;
         if (!device) throw new Error('Пристрій не ініціалізовано');
 
+        // Натискання, зроблені до запуску, програмі не належать
+        device.resetButtons();
+
+        // Стан читається перед скриптом — як у LuaFileRunnerApp::run(), де
+        // lualilka_state_load викликається ще до luaL_loadfile. Раніше це
+        // робила преамбула, тобто на етапі prepare(), коли віртуальної карти
+        // ще немає, і збережений стан не відновлювався ніколи.
+        engine.doStringSync('__lilka_load_state()');
+
         try {
             // Послідовність узята з AbstractLuaRunnerApp::execute():
             //   очистити канву -> виконати тіло скрипта -> queueDraw ->
@@ -141,6 +150,25 @@ export class LuaRuntime {
             return { reason: 'error', message: describe(error) };
         } finally {
             Atomics.store(control, CTRL.RUNNING, 0);
+            this.saveState();
+        }
+    }
+
+    /**
+     * Збереження `state` при завершенні програми.
+     *
+     * `LuaFileRunnerApp::run()` робить це після `execute()` безумовно: і після
+     * `util.exit`, і після помилки, і після звичайного виходу з циклу. Тому
+     * виклик стоїть у `finally`, а не поруч з успішним поверненням.
+     *
+     * Помилка самого збереження не має підмінити собою помилку програми: її
+     * має побачити той, хто пише код, тому вона йде в консоль окремим рядком.
+     */
+    private saveState(): void {
+        try {
+            this.engine?.doStringSync('__lilka_save_state()');
+        } catch (error) {
+            this.options.onPrint('⚠ не вдалося зберегти state: ' + describe(error));
         }
     }
 

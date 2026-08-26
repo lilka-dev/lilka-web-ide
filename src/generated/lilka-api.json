@@ -1,15 +1,15 @@
 {
   "specVersion": 1,
   "generator": "gen-api-spec.mjs",
-  "generatedAt": "2026-07-25T03:50:04.415Z",
+  "generatedAt": "2026-08-26T12:35:31.045Z",
   "source": {
     "kind": "dir",
-    "path": "./raw"
+    "path": "keira/addons/lualilka/library"
   },
   "stats": {
-    "files": 25,
-    "namespaces": 32,
-    "functions": 174,
+    "files": 26,
+    "namespaces": 34,
+    "functions": 181,
     "fields": 52,
     "constants": 35,
     "callbacks": 3,
@@ -476,6 +476,44 @@
       "callbacks": []
     },
     {
+      "name": "console",
+      "sourceFile": "(прошивка: lualilka_console.cpp)",
+      "kind": "module",
+      "doc": "Консоль. Простір імен, який прошивка реєструє, а анотації не описують.",
+      "docMarkdown": "Консоль. Простір імен, який прошивка реєструє, а анотації не описують.",
+      "summary": "Консоль.",
+      "constructor": null,
+      "fields": [],
+      "functions": [
+        {
+          "name": "print",
+          "qualifiedName": "console.print",
+          "callStyle": "static",
+          "signature": "console.print(...)",
+          "args": [
+            "..."
+          ],
+          "params": [
+            {
+              "name": "...",
+              "type": "any",
+              "optional": false,
+              "doc": "значення для виведення",
+              "docMarkdown": "значення для виведення",
+              "summary": "значення для виведення"
+            }
+          ],
+          "returns": [],
+          "usage": "console.print('рахунок: ', score)",
+          "line": 0,
+          "doc": "Виводить значення в консоль (на залізі — у послідовний порт).\n\nЗначення розділяються табуляцією, у кінці додається перенос рядка.\nРядки й числа друкуються звичайним перетворенням Lua, а решта — назвою\nсвого типу: console.print(true) виводить \"boolean\", а не \"true\".",
+          "docMarkdown": "Виводить значення в консоль (на залізі — у послідовний порт).\n\nЗначення розділяються табуляцією, у кінці додається перенос рядка.\nРядки й числа друкуються звичайним перетворенням Lua, а решта — назвою\nсвого типу: console.print(true) виводить \"boolean\", а не \"true\".",
+          "summary": "Виводить значення в консоль (на залізі — у послідовний порт)."
+        }
+      ],
+      "callbacks": []
+    },
+    {
       "name": "controller",
       "sourceFile": "controller.lua",
       "kind": "module",
@@ -897,10 +935,10 @@
           "summary": "Малює контур кола з центром в точці (x, y), радіусом r та кольором color."
         },
         {
-          "name": "draw_elipse",
-          "qualifiedName": "display.draw_elipse",
+          "name": "draw_ellipse",
+          "qualifiedName": "display.draw_ellipse",
           "callStyle": "static",
-          "signature": "display.draw_elipse(x, y, rx, ry, color)",
+          "signature": "display.draw_ellipse(x, y, rx, ry, color)",
           "args": [
             "x",
             "y",
@@ -1428,10 +1466,10 @@
           "summary": "Малює заповнене коло з центром в точці (x, y), радіусом r та кольором color."
         },
         {
-          "name": "fill_elipse",
-          "qualifiedName": "display.fill_elipse",
+          "name": "fill_ellipse",
+          "qualifiedName": "display.fill_ellipse",
           "callStyle": "static",
-          "signature": "display.fill_elipse(x, y, rx, ry, color)",
+          "signature": "display.fill_ellipse(x, y, rx, ry, color)",
           "args": [
             "x",
             "y",
@@ -1876,7 +1914,7 @@
     },
     {
       "name": "File",
-      "sourceFile": "sdcard.lua",
+      "sourceFile": "fs.lua",
       "kind": "class",
       "doc": "",
       "docMarkdown": "",
@@ -1902,7 +1940,7 @@
             }
           ],
           "usage": null,
-          "line": 55,
+          "line": 71,
           "doc": "Повернути наявність файлу.",
           "docMarkdown": "Повернути наявність файлу.",
           "summary": "Повернути наявність файлу."
@@ -1936,7 +1974,7 @@
             }
           ],
           "usage": null,
-          "line": 66,
+          "line": 82,
           "doc": "Прочитати з файлу.",
           "docMarkdown": "Прочитати з файлу.",
           "summary": "Прочитати з файлу."
@@ -1961,7 +1999,7 @@
           ],
           "returns": [],
           "usage": null,
-          "line": 60,
+          "line": 76,
           "doc": "Перемістити вказівник файлу на певну позицію.",
           "docMarkdown": "Перемістити вказівник файлу на певну позицію.",
           "summary": "Перемістити вказівник файлу на певну позицію."
@@ -1984,7 +2022,7 @@
             }
           ],
           "usage": null,
-          "line": 50,
+          "line": 66,
           "doc": "Повернути розмір файлу.",
           "docMarkdown": "Повернути розмір файлу.",
           "summary": "Повернути розмір файлу."
@@ -2008,11 +2046,219 @@
             }
           ],
           "returns": [],
-          "usage": "local file = sdcard.open(\"/file.txt\", \"w\") -- Відкриває файл для запису\nfile:write(\"Hello, world!\\n\") -- Записує текст у файл\nfile:write(\"Привіт, світ!\\n\") -- Дописує текст у файл",
-          "line": 75,
+          "usage": "local file = fs.open(\"/sd/file.txt\", \"w\") -- Відкриває файл для запису\nfile:write(\"Hello, world!\\n\") -- Записує текст у файл\nfile:write(\"Привіт, світ!\\n\") -- Дописує текст у файл",
+          "line": 91,
           "doc": "Записати у файл.",
           "docMarkdown": "Записати у файл.",
           "summary": "Записати у файл."
+        }
+      ],
+      "callbacks": []
+    },
+    {
+      "name": "fs",
+      "sourceFile": "fs.lua",
+      "kind": "module",
+      "doc": "",
+      "docMarkdown": "",
+      "summary": "",
+      "constructor": null,
+      "fields": [],
+      "functions": [
+        {
+          "name": "joinpath",
+          "qualifiedName": "fs.joinpath",
+          "callStyle": "static",
+          "signature": "fs.joinpath(lpath, rpath)",
+          "args": [
+            "lpath",
+            "rpath"
+          ],
+          "params": [
+            {
+              "name": "lpath",
+              "type": "string",
+              "optional": false,
+              "doc": "ліва половина шляху",
+              "docMarkdown": "ліва половина шляху",
+              "summary": "ліва половина шляху"
+            },
+            {
+              "name": "rpath",
+              "type": "string",
+              "optional": false,
+              "doc": "права половина шляху",
+              "docMarkdown": "права половина шляху",
+              "summary": "права половина шляху"
+            }
+          ],
+          "returns": [],
+          "usage": "fs.joinpath(\"/sd\", \"path/on/sdcard/file.txt\")",
+          "line": 47,
+          "doc": "Об'єднати частини шляху",
+          "docMarkdown": "Об'єднати частини шляху",
+          "summary": "Об'єднати частини шляху"
+        },
+        {
+          "name": "ls",
+          "qualifiedName": "fs.ls",
+          "callStyle": "static",
+          "signature": "fs.ls(path)",
+          "args": [
+            "path"
+          ],
+          "params": [
+            {
+              "name": "path",
+              "type": "string",
+              "optional": false,
+              "doc": "шлях до директорії",
+              "docMarkdown": "шлях до директорії",
+              "summary": "шлях до директорії"
+            }
+          ],
+          "returns": [
+            {
+              "type": "table",
+              "name": null,
+              "optional": false,
+              "doc": "",
+              "docMarkdown": "",
+              "summary": ""
+            }
+          ],
+          "usage": "local entries = fs.ls(\"/sd/folder\")\nfor i = 0, #entries do\n    print(entries[i])\nend",
+          "line": 15,
+          "doc": "Повернути таблицю зі списком файлів та директорій за вказаним шляхом.",
+          "docMarkdown": "Повернути таблицю зі списком файлів та директорій за вказаним шляхом.",
+          "summary": "Повернути таблицю зі списком файлів та директорій за вказаним шляхом."
+        },
+        {
+          "name": "mkpath",
+          "qualifiedName": "fs.mkpath",
+          "callStyle": "static",
+          "signature": "fs.mkpath(path)",
+          "args": [
+            "path"
+          ],
+          "params": [
+            {
+              "name": "path",
+              "type": "string",
+              "optional": false,
+              "doc": "шлях до файлу або директорії",
+              "docMarkdown": "шлях до файлу або директорії",
+              "summary": "шлях до файлу або директорії"
+            }
+          ],
+          "returns": [],
+          "usage": "fs.mkpath(\"/sd/path/to/a/folder\")",
+          "line": 22,
+          "doc": "Створити директорію за вказаним шляхом",
+          "docMarkdown": "Створити директорію за вказаним шляхом",
+          "summary": "Створити директорію за вказаним шляхом"
+        },
+        {
+          "name": "open",
+          "qualifiedName": "fs.open",
+          "callStyle": "static",
+          "signature": "fs.open(path, mode)",
+          "args": [
+            "path",
+            "mode"
+          ],
+          "params": [
+            {
+              "name": "path",
+              "type": "string",
+              "optional": false,
+              "doc": "шлях до файлу",
+              "docMarkdown": "шлях до файлу",
+              "summary": "шлях до файлу"
+            },
+            {
+              "name": "mode",
+              "type": "string",
+              "optional": false,
+              "doc": "режим відкриття файлу (за замовчуванням r) (див. функцію ``fopen`` у документації ANSI C)",
+              "docMarkdown": "режим відкриття файлу (за замовчуванням r) (див. функцію `fopen` у документації ANSI C)",
+              "summary": "режим відкриття файлу (за замовчуванням r) (див."
+            }
+          ],
+          "returns": [
+            {
+              "type": "File",
+              "name": null,
+              "optional": false,
+              "doc": "",
+              "docMarkdown": "",
+              "summary": ""
+            }
+          ],
+          "usage": "local file = fs.open(\"/tmp/file.txt\", \"a+\") -- Відкриває файл для додавання тексту\nfile:write(\"Hello, world!\\n\") -- Дописує текст в кінець файлу",
+          "line": 61,
+          "doc": "Відкрити файл за вказаним шляхом.",
+          "docMarkdown": "Відкрити файл за вказаним шляхом.",
+          "summary": "Відкрити файл за вказаним шляхом."
+        },
+        {
+          "name": "remove",
+          "qualifiedName": "fs.remove",
+          "callStyle": "static",
+          "signature": "fs.remove(path)",
+          "args": [
+            "path"
+          ],
+          "params": [
+            {
+              "name": "path",
+              "type": "string",
+              "optional": false,
+              "doc": "шлях до файлу або директорії",
+              "docMarkdown": "шлях до файлу або директорії",
+              "summary": "шлях до файлу або директорії"
+            }
+          ],
+          "returns": [],
+          "usage": "fs.remove(\"/sd/file.txt\")",
+          "line": 29,
+          "doc": "Видалити файл або директорію за вказаним шляхом.",
+          "docMarkdown": "Видалити файл або директорію за вказаним шляхом.",
+          "summary": "Видалити файл або директорію за вказаним шляхом."
+        },
+        {
+          "name": "rename",
+          "qualifiedName": "fs.rename",
+          "callStyle": "static",
+          "signature": "fs.rename(old_path, new_path)",
+          "args": [
+            "old_path",
+            "new_path"
+          ],
+          "params": [
+            {
+              "name": "old_path",
+              "type": "string",
+              "optional": false,
+              "doc": "старий шлях до файлу або директорії",
+              "docMarkdown": "старий шлях до файлу або директорії",
+              "summary": "старий шлях до файлу або директорії"
+            },
+            {
+              "name": "new_path",
+              "type": "string",
+              "optional": false,
+              "doc": "новий шлях до файлу або директорії",
+              "docMarkdown": "новий шлях до файлу або директорії",
+              "summary": "новий шлях до файлу або директорії"
+            }
+          ],
+          "returns": [],
+          "usage": "fs.rename(\"/sd/file.txt\", \"/sd/file2.txt\")",
+          "line": 38,
+          "doc": "Перейменувати файл або директорію.",
+          "docMarkdown": "Перейменувати файл або директорію.",
+          "summary": "Перейменувати файл або директорію."
         }
       ],
       "callbacks": []
@@ -7477,10 +7723,34 @@
       "message": "Коментар із двома дефісами всередині блоку анотацій (має бути \"---\"): --  transform = transform:scale(1.5, 0.5)"
     },
     {
+      "file": "sdcard.lua",
+      "line": 0,
+      "level": "info",
+      "message": "Простір імен \"File\" описано і тут, і в fs.lua — описи об'єднано"
+    },
+    {
       "file": "util.lua",
       "line": 6,
       "level": "info",
       "message": "util.time: немає опису"
+    },
+    {
+      "file": "display.lua",
+      "line": 158,
+      "level": "warning",
+      "message": "display.draw_elipse перейменовано на draw_ellipse: lualilka_display.cpp реєструє \"draw_ellipse\", з двома \"l\" — і ніколи не реєстрував інакше"
+    },
+    {
+      "file": "display.lua",
+      "line": 166,
+      "level": "warning",
+      "message": "display.fill_elipse перейменовано на fill_ellipse: lualilka_display.cpp реєструє \"fill_ellipse\", з двома \"l\" — і ніколи не реєстрував інакше"
+    },
+    {
+      "file": "(прошивка: lualilka_console.cpp)",
+      "line": 0,
+      "level": "info",
+      "message": "Простір імен \"console\" додано з прошивки: в анотаціях його немає"
     },
     {
       "file": "gpio.lua",

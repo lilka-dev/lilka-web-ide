@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LuaRuntime } from '../src/runtime/runtime.ts';
+import { LilkaDevice } from '../src/runtime/device.ts';
 import { createSharedMemory, CTRL, bufferOffset } from '../src/runtime/shared.ts';
 import { color565 } from '../src/emulator/color.ts';
 import type { FontJson } from '../src/emulator/font.ts';
@@ -53,6 +54,29 @@ async function runScript(code: string, options: { budget?: number } = {}) {
     const coverage = runtime.apiCoverage;
     runtime.close();
     return { result, output, frame, pixels, memory, coverage };
+}
+
+/** Запуск із доступом до віртуальної карти — для перевірок стану й файлів. */
+async function runWithVfs(scriptPath: string, code: string, files: Array<[string, Uint8Array]> = []) {
+    const memory = createSharedMemory(W, H);
+    const output: string[] = [];
+    const runtime = new LuaRuntime({
+        memory,
+        fonts,
+        statusBarHeight: profile.canvas.statusBarHeight,
+        defaultFont: board.defaultFont,
+        onPrint: (t) => output.push(t),
+    });
+    await runtime.prepare();
+    runtime.loadFiles(scriptPath, files);
+    const result = runtime.run(code);
+    const device = (runtime as unknown as { device: { vfs: { read(path: string): Uint8Array | null } } }).device;
+    const read = (path: string) => {
+        const bytes = device.vfs.read(path);
+        return bytes === null ? null : new TextDecoder().decode(bytes);
+    };
+    runtime.close();
+    return { result, output, read };
 }
 
 // 1. Скрипт без циклу: тіло виконується, кадр публікується
@@ -234,13 +258,19 @@ async function runScript(code: string, options: { budget?: number } = {}) {
 // 14. Простори імен мають бути СПРАВЖНІМИ таблицями, а не userdata.
 //     Пряме присвоєння об'єкта з боку JS дає проксі: індексування працює,
 //     але type() повертає "userdata", і програма під залізо може спіткнутися.
+//
+//     state у цьому переліку стоїть окремо, і не випадково: на першому запуску
+//     його немає зовсім. Прошивка створює глобальну змінну лише тоді, коли
+//     поруч зі скриптом лежить файл .state.
 {
     const { output } = await runScript(`
         print(type(display), type(controller), type(util), type(buzzer))
-        print(type(audio), type(state), type(resources), type(math))
+        print(type(audio), type(resources), type(math), type(fs))
+        print(type(console), type(state))
     `);
     ok(output[0] === 'table\ttable\ttable\ttable', `простори імен — таблиці: "${output[0]}"`);
     ok(output[1] === 'table\ttable\ttable\ttable', `простори імен — таблиці: "${output[1]}"`);
+    ok(output[2] === 'table\tnil', `console є, state без файлу — nil: "${output[2]}"`);
 }
 
 // 15. Зумер: мелодія виходить назовні з правильними нотами, не блокуючи цикл
@@ -375,34 +405,159 @@ async function runScript(code: string, options: { budget?: number } = {}) {
     ok(pixels[80 * W + 100] === 0xffff, 'центр кола на місці після відкидання дробу');
 }
 
-// 23. state зберігається між запусками через файл поруч зі скриптом
+// 23. state зберігається між запусками через файл поруч зі скриптом.
+//     Програма починає з документованого "state = state or {}", бо на першому
+//     запуску глобальної змінної ще немає.
 {
-    const memory = createSharedMemory(W, H);
-    const runtime = new LuaRuntime({
-        memory,
-        fonts,
-        statusBarHeight: profile.canvas.statusBarHeight,
-        defaultFont: board.defaultFont,
-        onPrint: () => {},
-    });
-    await runtime.prepare();
-    runtime.loadFiles('/sd/гра.lua', []);
-    runtime.run(`
+    const first = await runWithVfs(
+        '/sd/гра.lua',
+        `
+        state = state or {}
         state.score = 42
         state.name = "Богдан"
         state.save()
-    `);
-
-    // Файл .state має з'явитися поруч зі скриптом
-    const device = (runtime as unknown as { device: { vfs: { read(path: string): Uint8Array | null } } }).device;
-    const saved = device.vfs.read('/sd/гра.state');
-    runtime.close();
-
-    ok(saved !== null, 'файл стану створено поруч зі скриптом');
-    const text = saved ? new TextDecoder().decode(saved) : '';
+    `,
+    );
+    const text = first.read('/sd/гра.state');
+    ok(text !== null, 'файл стану створено поруч зі скриптом');
     // Формат дослівно як у прошивці: по три рядки на значення
-    ok(text.includes('number'), `формат прошивки: ключ, тип, значення`);
-    ok(text.includes('Богдан'), 'рядкові значення зберігаються');
+    ok((text ?? '').includes('number'), 'формат прошивки: ключ, тип, значення');
+    ok((text ?? '').includes('Богдан'), 'рядкові значення зберігаються');
+
+    // Наступний запуск бачить збережене, і числа приїжджають дробовими:
+    // прошивка пише %lf і читає %lf, тобто 42 повертається як 42.0
+    const second = await runWithVfs('/sd/гра.lua', 'print(type(state), state.score, state.name)', [
+        ['/sd/гра.state', new TextEncoder().encode(text ?? '')],
+    ]);
+    ok(
+        second.output[0] === 'table\t42.0\tБогдан',
+        `стан прочитано наступного запуску: "${second.output[0]}"`,
+    );
+}
+
+// 23a. Прошивка зберігає state сама: LuaFileRunnerApp::run() пише файл після
+//      execute() безумовно, викликала програма save() чи ні.
+{
+    const quiet = await runWithVfs('/sd/тихо.lua', 'state = state or {}\nstate.record = 7');
+    const text = quiet.read('/sd/тихо.state') ?? '';
+    ok(text.includes('record'), `state збережено без виклику save(): "${text.replace(/\n/g, '|')}"`);
+}
+
+// 23b. clear() і reset() — різні дії, і плутати їх не можна:
+//      clear() видаляє файл і робить state рівним nil,
+//      reset() файл не чіпає, а перечитує його.
+{
+    const cleared = await runWithVfs(
+        '/sd/чистка.lua',
+        `
+        state = state or {}
+        state.a = 1
+        state.save()
+        state.clear()
+        print(type(state))
+    `,
+    );
+    ok(cleared.output[0] === 'nil', `після clear() state дорівнює nil: "${cleared.output[0]}"`);
+    ok(cleared.read('/sd/чистка.state') === null, 'clear() видаляє файл стану');
+
+    const reverted = await runWithVfs(
+        '/sd/відкат.lua',
+        `
+        state = state or {}
+        state.a = 1
+        state.save()
+        state.a = 99
+        state.reset()
+        print(state.a, type(state.save))
+    `,
+    );
+    ok(reverted.output[0] === '1.0\tfunction', `reset() перечитує файл: "${reverted.output[0]}"`);
+
+    const guarded = await runWithVfs('/sd/захист.lua', 'state = state or {}\nstate.save = 1');
+    ok(
+        guarded.result.reason === 'error' && /save/.test(guarded.result.message ?? ''),
+        `save/reset/clear/path не перезаписуються: "${guarded.result.message ?? guarded.result.reason}"`,
+    );
+}
+
+// 23c. console.print і display.print перетворюють значення правилами прошивки:
+//      рядки й числа — звичайним tostring, решта — НАЗВОЮ ТИПУ. Стандартний
+//      print цього не робить: прошивка його не перевизначає.
+{
+    const { output } = await runScript(`
+        console.print(5, 5.0, "текст", true, nil, {})
+        print(true, nil)
+    `);
+    ok(output[0] === '5\t5.0\tтекст\tboolean\tnil\ttable', `console.print за правилами прошивки: "${output[0]}"`);
+    ok(output[1] === 'true\tnil', `звичайний print лишається стандартним: "${output[1]}"`);
+}
+
+// 23d. fs.* — простір імен, якого емулятору бракувало цілком. Відносні шляхи
+//      тут рахуються від теки скрипта, а не приклеюються до "/sd".
+{
+    const { output, result } = await runWithVfs(
+        '/sd/тека/скрипт.lua',
+        `
+        fs.mkpath("/sd/тека/дані")
+        local file = fs.open("/sd/тека/дані/нотатка.txt", "w")
+        file:write("привіт")
+        local again = fs.open("дані/нотатка.txt")
+        print(again:exists(), again:read(100))
+        print(fs.joinpath("/sd/тека", "/дані"))
+        local names = fs.ls("/sd/тека/дані")
+        print(#names, names[1])
+    `,
+    );
+    ok(result.reason !== 'error', `fs працює: ${result.message ?? ''}`);
+    ok(output[0] === 'true\tпривіт', `fs.open читає щойно записане: "${output[0]}"`);
+    ok(output[1] === '/sd/тека/дані', `fs.joinpath склеює шляхи: "${output[1]}"`);
+    ok(output[2] === '1\tнотатка.txt', `fs.ls перелічує теку: "${output[2]}"`);
+}
+
+// 23e. Еліпс у прошивці пишеться з двома "l" — одна лишилася в анотації
+{
+    const { output } = await runScript(
+        'print(type(display.draw_ellipse), type(display.fill_ellipse), type(display.draw_elipse))',
+    );
+    ok(output[0] === 'function\tfunction\tnil', `display.draw_ellipse, а не draw_elipse: "${output[0]}"`);
+}
+
+// 23f. math: sign відкидає дріб ще до порівняння (int value = luaL_checknumber),
+//      а агрегати читають лише масивну частину таблиці — через lua_rawlen.
+{
+    const { output, result } = await runScript(`
+        print(math.sign(0.5), math.sign(-0.5), math.sign(2.7), math.sign(-2.7))
+        print(math.max({3, 1, 2}), math.sum({1, 2}))
+        local okHash = pcall(function() return math.max({a = 1, b = 2}) end)
+        local okEmpty = pcall(function() return math.min({}) end)
+        print(okHash, okEmpty)
+    `);
+    ok(result.reason !== 'error', `math працює: ${result.message ?? ''}`);
+    ok(output[0] === '0\t0\t1\t-1', `math.sign відкидає дріб: "${output[0]}"`);
+    ok(output[1] === '3.0\t3.0', `агрегати повертають дробові: "${output[1]}"`);
+    ok(output[2] === 'false\tfalse', `таблиця без масивної частини — помилка: "${output[2]}"`);
+}
+
+// 23g. Дотик, коротший за кадр воркера, не має губитися: переходи беруться з
+//      лічильників фронтів, а не з порівняння рівнів.
+{
+    const memory = createSharedMemory(W, H);
+    const device = new LilkaDevice(memory, fonts, profile.canvas.statusBarHeight, board.defaultFont);
+    const control = memory.control;
+
+    device.resetButtons();
+    device.sampleButtons(); // точка відліку
+
+    // Натиснули й відпустили між знімками: рівень кнопки нульовий в обидва боки
+    Atomics.store(control, CTRL.PRESSES, 1);
+    Atomics.store(control, CTRL.RELEASES, 1);
+
+    const tap = device.readControllerState();
+    ok(
+        tap.up.just_pressed && tap.up.just_released && !tap.up.pressed,
+        'дотик, коротший за кадр, не губиться',
+    );
+    ok(!device.readControllerState().up.just_pressed, 'прапорці just_* живуть лише до читання');
 }
 
 // 24. Прошивка вимагає ОБИДВА колбеки: без `update` цикл не стартує навіть

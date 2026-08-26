@@ -473,9 +473,6 @@ function frame(now: number): void {
         host.pushButtons(controller);
         host.checkWatchdog(fontJson);
         host.present(surface.display);
-        // прапорці just_* споживає Lua, але їх треба скидати й тут,
-        // інакше після зупинки програми накопичиться черга натискань
-        controller.readState();
         screen.present();
     }
 

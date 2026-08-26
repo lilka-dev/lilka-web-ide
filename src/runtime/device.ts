@@ -53,12 +53,16 @@ export class LilkaDevice {
     private texts: [TextRenderer, TextRenderer];
 
     /** Зняток кнопок на початок кадру та стан прапорців just_*. */
-    private previous = new Array(SHARED_BUTTONS.length).fill(false);
     private snapshot: ButtonSnapshot[] = SHARED_BUTTONS.map(() => ({
         pressed: false,
         just_pressed: false,
         just_released: false,
     }));
+    /** Лічильники фронтів, які вже враховано. */
+    private lastPresses = new Array(SHARED_BUTTONS.length).fill(0);
+    private lastReleases = new Array(SHARED_BUTTONS.length).fill(0);
+    /** До першого знімка різницю рахувати нема з чим. */
+    private buttonsArmed = false;
 
     private readonly memory: SharedMemory;
     private readonly statusBarHeight: number;
@@ -138,24 +142,57 @@ export class LilkaDevice {
         );
     }
 
-    /** Знімає стан кнопок раз на кадр і обчислює переходи. */
+    /**
+     * Скидає стан кнопок на початок програми.
+     *
+     * Те, що натиснули до запуску, програмі не належить: інакше перший кадр
+     * побачив би натискання кнопки, якою її ж і запустили.
+     */
+    resetButtons(): void {
+        this.buttonsArmed = false;
+        for (const slot of this.snapshot) {
+            slot.pressed = false;
+            slot.just_pressed = false;
+            slot.just_released = false;
+        }
+    }
+
+    /**
+     * Знімає стан кнопок і накопичує переходи.
+     *
+     * Переходи беруться з лічильників головного потоку, а не з порівняння
+     * рівнів: дотик, який почався й закінчився між двома знімками, за рівнем
+     * невидимий, а на залізі його видно. Прапорці накопичуються й живуть до
+     * читання — саме так поводиться `justPressed` у прошивці.
+     */
     sampleButtons(): void {
         const control = this.memory.control;
         for (let i = 0; i < SHARED_BUTTONS.length; i++) {
-            const pressed = Atomics.load(control, CTRL.BUTTONS + i) === 1;
+            const presses = Atomics.load(control, CTRL.PRESSES + i);
+            const releases = Atomics.load(control, CTRL.RELEASES + i);
             const slot = this.snapshot[i];
-            if (pressed && !this.previous[i]) slot.just_pressed = true;
-            if (!pressed && this.previous[i]) slot.just_released = true;
-            slot.pressed = pressed;
-            this.previous[i] = pressed;
+            if (this.buttonsArmed) {
+                if (presses !== this.lastPresses[i]) slot.just_pressed = true;
+                if (releases !== this.lastReleases[i]) slot.just_released = true;
+            }
+            this.lastPresses[i] = presses;
+            this.lastReleases[i] = releases;
+            slot.pressed = Atomics.load(control, CTRL.BUTTONS + i) === 1;
         }
+        this.buttonsArmed = true;
     }
 
     /**
      * Читання стану з боку Lua. Прапорці just_* скидаються при читанні —
      * так само, як у прошивці.
+     *
+     * Знімок робиться просто тут, а не лише в головному циклі: на залізі
+     * `controller.getState()` читає живий стан у будь-який момент, зокрема з
+     * тіла скрипта чи з власного циклу `while true do ... util.sleep() end`,
+     * де головний цикл середовища не працює взагалі.
      */
     readControllerState(): Record<string, ButtonSnapshot> {
+        this.sampleButtons();
         const state: Record<string, ButtonSnapshot> = {};
         for (let i = 0; i < SHARED_BUTTONS.length; i++) {
             const slot = this.snapshot[i];

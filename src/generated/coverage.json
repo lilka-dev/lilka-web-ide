@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-08-01T06:11:26.545Z",
+  "generatedAt": "2026-08-26T12:35:43.363Z",
   "totals": {
-    "functions": 174,
-    "implemented": 111,
+    "functions": 181,
+    "implemented": 118,
     "stubs": 1,
-    "inScopeFunctions": 108,
-    "inScopeImplemented": 107
+    "inScopeFunctions": 119,
+    "inScopeImplemented": 118
   },
   "namespaces": [
     {
@@ -19,6 +19,13 @@
       "name": "buzzer",
       "total": 3,
       "done": 3,
+      "stub": 0,
+      "missing": []
+    },
+    {
+      "name": "console",
+      "total": 1,
+      "done": 1,
       "stub": 0,
       "missing": []
     },
@@ -40,6 +47,13 @@
       "name": "File",
       "total": 5,
       "done": 5,
+      "stub": 0,
+      "missing": []
+    },
+    {
+      "name": "fs",
+      "total": 6,
+      "done": 6,
       "stub": 0,
       "missing": []
     },
@@ -83,8 +97,7 @@
       "total": 4,
       "done": 4,
       "stub": 0,
-      "missing": [],
-      "note": "файлова система"
+      "missing": []
     },
     {
       "name": "state",

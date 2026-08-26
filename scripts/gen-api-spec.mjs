@@ -27,6 +27,179 @@ const GH_PATH = 'addons/lualilka/library';
 const DEFAULT_SRC = 'keira/addons/lualilka/library';
 
 /* ------------------------------------------------------------------ *
+ * Розбіжності анотацій із прошивкою
+ * ------------------------------------------------------------------ */
+
+/**
+ * Анотації в `keira/addons` — не остання інстанція.
+ *
+ * Джерело правди тут — те, що прошивка реально реєструє в `lua_State`.
+ * Подекуди анотація з ним розходиться, і успадкувати помилку мовчки не можна:
+ * з цієї специфікації виростають автодоповнення, блоки й перевірка повноти
+ * емулятора, тож програма, написана за хибною підказкою, на залізі не
+ * запуститься. Кожне виправлення тут — з посиланням на місце в C++.
+ */
+const FIRMWARE_RENAMES = [
+    {
+        namespace: 'display',
+        from: 'draw_elipse',
+        to: 'draw_ellipse',
+        why: 'lualilka_display.cpp реєструє "draw_ellipse", з двома "l" — і ніколи не реєстрував інакше',
+    },
+    {
+        namespace: 'display',
+        from: 'fill_elipse',
+        to: 'fill_ellipse',
+        why: 'lualilka_display.cpp реєструє "fill_ellipse", з двома "l" — і ніколи не реєстрував інакше',
+    },
+];
+
+/**
+ * Те, що прошивка реєструє, а анотації не описують зовсім.
+ *
+ * `console.print` — глобальна функція, якою користуються приклади в самих
+ * анотаціях (`console.print(state.path)` у state.lua). Через відсутність опису
+ * її не було ні в специфікації, ні в автодоповненні, ні в емуляторі.
+ */
+function firmwareExtras() {
+    const summary = 'Виводить значення в консоль (на залізі — у послідовний порт).';
+    const doc =
+        summary +
+        '\n\nЗначення розділяються табуляцією, у кінці додається перенос рядка.' +
+        '\nРядки й числа друкуються звичайним перетворенням Lua, а решта — назвою' +
+        '\nсвого типу: console.print(true) виводить "boolean", а не "true".';
+    const param = {
+        name: '...',
+        type: 'any',
+        optional: false,
+        doc: 'значення для виведення',
+        docMarkdown: 'значення для виведення',
+        summary: 'значення для виведення',
+    };
+    return [
+        {
+            name: 'console',
+            sourceFile: '(прошивка: lualilka_console.cpp)',
+            kind: 'module',
+            doc: 'Консоль. Простір імен, який прошивка реєструє, а анотації не описують.',
+            docMarkdown: 'Консоль. Простір імен, який прошивка реєструє, а анотації не описують.',
+            summary: 'Консоль.',
+            declared: true,
+            constructor: null,
+            fields: [],
+            functions: [
+                {
+                    name: 'print',
+                    qualifiedName: 'console.print',
+                    callStyle: 'static',
+                    signature: 'console.print(...)',
+                    args: ['...'],
+                    params: [param],
+                    returns: [],
+                    usage: "console.print('рахунок: ', score)",
+                    line: 0,
+                    doc,
+                    docMarkdown: doc,
+                    summary,
+                },
+            ],
+            callbacks: [],
+        },
+    ];
+}
+
+/** Застосовує виправлення до розібраних просторів імен. */
+function applyFirmwareCorrections(namespaces, diagnostics) {
+    for (const rename of FIRMWARE_RENAMES) {
+        const target = namespaces.get(rename.namespace);
+        const fn = target && target.functions.find((f) => f.name === rename.from);
+        if (!fn) {
+            diagnostics.push({
+                file: target ? target.sourceFile : '(немає)',
+                line: 0,
+                level: 'info',
+                message:
+                    `Виправлення ${rename.namespace}.${rename.from} -> ${rename.to} більше не потрібне: ` +
+                    'в анотаціях такої назви немає',
+            });
+            continue;
+        }
+        const oldName = `${rename.namespace}.${rename.from}`;
+        const newName = `${rename.namespace}.${rename.to}`;
+        fn.name = rename.to;
+        fn.qualifiedName = newName;
+        for (const key of ['signature', 'usage', 'doc', 'docMarkdown', 'summary']) {
+            if (typeof fn[key] === 'string') fn[key] = fn[key].split(oldName).join(newName);
+        }
+        diagnostics.push({
+            file: target.sourceFile,
+            line: fn.line || 0,
+            level: 'warning',
+            message: `${oldName} перейменовано на ${rename.to}: ${rename.why}`,
+        });
+    }
+
+    for (const extra of firmwareExtras()) {
+        if (namespaces.has(extra.name)) continue;
+        namespaces.set(extra.name, extra);
+        diagnostics.push({
+            file: extra.sourceFile,
+            line: 0,
+            level: 'info',
+            message: `Простір імен "${extra.name}" додано з прошивки: в анотаціях його немає`,
+        });
+    }
+}
+
+/**
+ * Об'єднує повторне оголошення простору імен із першим.
+ *
+ * Сам по собі повтор помилкою не є: `lualilka_fs.h` і `lualilka_sdcard.h`
+ * оголошують `FILE_OBJECT` тим самим рядком "File", тож другий
+ * `luaL_newmetatable` повертає вже створену метатаблицю — об'єкт буквально
+ * один, просто описаний у двох файлах анотацій.
+ *
+ * Помилкою лишається розбіжність: якщо однойменну функцію описано двічі з
+ * різними підписами, зрозуміти, котрий із них справжній, уже неможливо.
+ */
+function mergeNamespace(target, extra, fileName, diagnostics) {
+    target.declared = target.declared || extra.declared;
+    if (!target.doc && extra.doc) {
+        target.doc = extra.doc;
+        target.docMarkdown = extra.docMarkdown;
+        target.summary = extra.summary;
+    }
+    if (!target.constructor && extra.constructor) target.constructor = extra.constructor;
+
+    for (const key of ['functions', 'fields', 'callbacks']) {
+        for (const item of extra[key]) {
+            const known = target[key].find((x) => x.name === item.name);
+            if (!known) {
+                target[key].push(item);
+                continue;
+            }
+            if (known.signature && item.signature && known.signature !== item.signature) {
+                diagnostics.push({
+                    file: fileName,
+                    line: item.line || 0,
+                    level: 'error',
+                    message:
+                        `${target.name}.${item.name} описано двічі по-різному: ` +
+                        `"${known.signature}" у ${target.sourceFile} і "${item.signature}" тут`,
+                });
+            }
+        }
+    }
+
+    diagnostics.push({
+        file: fileName,
+        line: 0,
+        level: 'info',
+        message: `Простір імен "${target.name}" описано і тут, і в ${target.sourceFile} — описи об'єднано`,
+    });
+}
+
+/* ------------------------------------------------------------------ *
  * Аргументи командного рядка
  * ------------------------------------------------------------------ */
 
@@ -651,13 +824,10 @@ async function main() {
     for (const file of files) {
         const parsed = parseFile(file.name, file.text, diagnostics);
         for (const [name, data] of parsed) {
-            if (allNamespaces.has(name)) {
-                diagnostics.push({
-                    file: file.name,
-                    line: 0,
-                    level: 'error',
-                    message: `Простір імен "${name}" оголошено повторно (вперше — у ${allNamespaces.get(name).sourceFile})`,
-                });
+            const existing = allNamespaces.get(name);
+            if (existing) {
+                mergeNamespace(existing, data, file.name, diagnostics);
+                continue;
             }
             allNamespaces.set(name, data);
         }
@@ -665,6 +835,8 @@ async function main() {
     for (const file of files) {
         parseAliases(file.name, file.text, allNamespaces, diagnostics);
     }
+
+    applyFirmwareCorrections(allNamespaces, diagnostics);
 
     const namespaces = [...allNamespaces.values()]
         .map(({ declared, ...rest }) => {

@@ -306,12 +306,21 @@ export class LuaHost {
         return true;
     }
 
-    /** Переносить стан кнопок у спільну пам'ять. Раз на кадр головного потоку. */
+    /**
+     * Переносить стан кнопок у спільну пам'ять. Раз на кадр головного потоку.
+     *
+     * Разом із рівнем ідуть лічильники фронтів: без них дотик, коротший за
+     * кадр воркера, зник би безслідно, а на залізі його ловить перехоплювач
+     * контролера.
+     */
     pushButtons(controller: Controller): void {
         if (!this.memory) return;
         const control = this.memory.control;
         for (let i = 0; i < SHARED_BUTTONS.length; i++) {
-            Atomics.store(control, CTRL.BUTTONS + i, controller.isPressed(SHARED_BUTTONS[i]) ? 1 : 0);
+            const name = SHARED_BUTTONS[i];
+            Atomics.store(control, CTRL.BUTTONS + i, controller.isPressed(name) ? 1 : 0);
+            Atomics.store(control, CTRL.PRESSES + i, controller.pressCount(name));
+            Atomics.store(control, CTRL.RELEASES + i, controller.releaseCount(name));
         }
     }
 

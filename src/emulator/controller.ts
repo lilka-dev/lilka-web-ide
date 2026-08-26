@@ -1,11 +1,17 @@
 /**
  * Контролер.
  *
- * Семантика повторює `controller.get_state()` у прошивці: прапорці
- * `just_pressed` / `just_released` живуть до наступного читання стану, після
- * чого скидаються. Саме тому вони накопичуються в окремих полях, а не
- * обчислюються порівнянням з попереднім кадром — інакше програма, яка читає
- * стан двічі за кадр, побачила б натискання двічі, чого на залізі не буває.
+ * Тримає рівень кожної кнопки й лічильники подій — скільки разів її натиснули
+ * та відпустили. Прапорці `just_pressed` / `just_released` з них виводить уже
+ * воркер (`LilkaDevice.sampleButtons`): саме там живе програма, і саме там їх
+ * треба скидати при читанні, бо на залізі `getState()` прапорець забирає.
+ *
+ * Чому лічильники, а не прапорці по цей бік: подія мусить пережити кадр. Дотик,
+ * який почався й закінчився між двома знімками воркера, за рівнем кнопки
+ * невидимий — а на залізі його ловить перехоплювач контролера, там
+ * `justPressed` виставляється на самому фронті. Лічильник зростає так само
+ * невідворотно, тож воркер бачить різницю навіть тоді, коли кнопка вже
+ * відпущена.
  */
 
 export type ButtonName =
@@ -17,18 +23,11 @@ export const BUTTON_NAMES: readonly ButtonName[] = [
     'up', 'down', 'left', 'right', 'a', 'b', 'c', 'd', 'select', 'start',
 ];
 
-export interface ButtonState {
-    pressed: boolean;
-    just_pressed: boolean;
-    just_released: boolean;
-}
-
-export type ControllerState = Record<ButtonName, ButtonState>;
-
 interface Slot {
     pressed: boolean;
-    justPressed: boolean;
-    justReleased: boolean;
+    /** Монотонні лічильники фронтів. До переповнення int32 тут не дійде. */
+    presses: number;
+    releases: number;
     /** Скільки джерел тримають кнопку: клавіатура, дотик, мишка. */
     holders: Set<string>;
 }
@@ -43,8 +42,8 @@ export class Controller {
         for (const name of BUTTON_NAMES) {
             this.slots.set(name, {
                 pressed: false,
-                justPressed: false,
-                justReleased: false,
+                presses: 0,
+                releases: 0,
                 holders: new Set(),
             });
         }
@@ -110,7 +109,7 @@ export class Controller {
         slot.holders.add(holder);
         if (!slot.pressed) {
             slot.pressed = true;
-            slot.justPressed = true;
+            slot.presses++;
         }
     }
 
@@ -120,7 +119,7 @@ export class Controller {
         slot.holders.delete(holder);
         if (slot.pressed && slot.holders.size === 0) {
             slot.pressed = false;
-            slot.justReleased = true;
+            slot.releases++;
         }
     }
 
@@ -133,22 +132,14 @@ export class Controller {
         return this.slots.get(button)?.pressed ?? false;
     }
 
-    /**
-     * Знімок стану. Скидає прапорці just_*, як і прошивка.
-     */
-    readState(): ControllerState {
-        const state = {} as ControllerState;
-        for (const name of BUTTON_NAMES) {
-            const slot = this.slots.get(name)!;
-            state[name] = {
-                pressed: slot.pressed,
-                just_pressed: slot.justPressed,
-                just_released: slot.justReleased,
-            };
-            slot.justPressed = false;
-            slot.justReleased = false;
-        }
-        return state;
+    /** Скільки разів кнопку натиснули від початку сеансу. */
+    pressCount(button: ButtonName): number {
+        return this.slots.get(button)?.presses ?? 0;
+    }
+
+    /** Скільки разів кнопку відпустили від початку сеансу. */
+    releaseCount(button: ButtonName): number {
+        return this.slots.get(button)?.releases ?? 0;
     }
 
     destroy(): void {
