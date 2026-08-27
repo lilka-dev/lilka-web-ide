@@ -1,0 +1,37 @@
+name: CI
+
+# Основне навантаження deploy.yml несе на push у main, але той тригер не
+# бачить pull request-и — і зламаний код можна було б злити, не отримавши
+# жодної автоматичної перевірки до цього. Цей workflow — саме про PR.
+on:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci --prefer-offline || npm install
+      - name: Перевірка типів
+        run: npm run typecheck
+      - name: Перевірки (геометрія, шрифти, растр, файли, рантайм)
+        run: npm run check
+      - name: Браузер для e2e
+        run: npx playwright install --with-deps chromium
+      - name: Димові e2e-перевірки редактора
+        run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+      - name: Build
+        # Та сама перевірка, що й у deploy.yml: чи взагалі збирається бандл.
+        # VITE_BASE тут не потрібен — PR нікуди не публікується.
+        run: npm run build

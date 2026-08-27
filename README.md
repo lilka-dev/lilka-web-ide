@@ -68,7 +68,10 @@ Chrome потрібен, бо Lua виконується у Web Worker із `Sha
 ```bash
 npm run check      # 124 автоматичні перевірки
 npm run build      # tsc --noEmit + vite build -> dist/
+npm run test:e2e   # Playwright: чи працює редактор у справжньому браузері
 ```
+
+Перед першим `test:e2e` потрібен браузер: `npx playwright install chromium`.
 
 <details>
 <summary>Решта команд</summary>
@@ -98,8 +101,13 @@ npm run render:testcard  # PNG тест-карти без браузера
 
 ## Розгортання
 
-`.github/workflows/deploy.yml` збирає й публікує на GitHub Pages. `VITE_BASE`
-підставляється з назви репозиторію автоматично.
+`.github/workflows/deploy.yml` перевіряє типи, ганяє `npm run check` і лише
+тоді збирає й публікує на GitHub Pages — зламаний код туди не потрапить.
+`VITE_BASE` підставляється з назви репозиторію автоматично.
+
+`.github/workflows/ci.yml` робить те саме плюс `npm run test:e2e` і `npm run
+build` для кожного pull request: `deploy.yml` бачить лише push у `main`, тож
+без цього PR можна було б злити без жодної автоматичної перевірки.
 
 `public/coi-serviceworker.js` мусить лишатися окремим файлом поза бандлом і
 віддаватися з власного origin — інакше не буде `SharedArrayBuffer`, а без нього

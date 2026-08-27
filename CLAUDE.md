@@ -101,6 +101,16 @@ npm run render:testcard              # testcard.png — геометрія і т
 npm run render:testcard out.png images   # зображення і перетворення
 ```
 
+`npm run check` і `npm run build` не бачать редактор очима людини: вони не
+натискають кнопки в браузері. Це робить `npm run test:e2e` — Playwright під
+headless Chromium, `e2e/smoke.spec.ts`. Перед першим запуском потрібен
+браузер: `npx playwright install chromium`.
+
+Обидва набори підключені в CI: `deploy.yml` не пустить у production код, що
+не пройшов `typecheck` і `check`; `ci.yml` на кожен pull request додає ще й
+`test:e2e` і `build` — це єдине місце, де PR отримує автоматичну перевірку до
+злиття.
+
 ## Чого бракує найбільше
 
 Подробиці — в GitHub Issues. Стисло: віджети `alertUI`/`keyboardUI`/

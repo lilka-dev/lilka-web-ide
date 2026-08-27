@@ -25,9 +25,11 @@
     "check:widgets": "node --experimental-strip-types scripts/check-widgets.mts",
     "gen:icons": "node scripts/gen-icons.mjs",
     "gen:completions": "node scripts/gen-completions.mjs",
-    "check:completions": "node --experimental-strip-types scripts/check-completions.mts"
+    "check:completions": "node --experimental-strip-types scripts/check-completions.mts",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "typescript": "~5.6.3",
     "vite": "^8.2.2"
   },

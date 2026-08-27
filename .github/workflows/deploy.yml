@@ -27,6 +27,13 @@ jobs:
         # npm ci потребує package-lock.json. Якщо його ще не закомітили —
         # відкочуємось на звичайний install, щоб перша публікація не впала.
         run: npm ci --prefer-offline || npm install
+      # Публікація не має відбутися з коду, що не пройшов власні перевірки:
+      # PR отримує ту саму перевірку в ci.yml, але прямий push у main обходить
+      # PR, тож без цих кроків тут поламаний код міг би доїхати до Pages.
+      - name: Перевірка типів
+        run: npm run typecheck
+      - name: Перевірки (геометрія, шрифти, растр, файли, рантайм)
+        run: npm run check
       - name: Build
         # Сайт живе за адресою https://<owner>.github.io/<repo>/
         run: npm run build

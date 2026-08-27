@@ -16,17 +16,12 @@ export default defineConfig({
                  * лишити його в головному файлі, сторінка почне показувати
                  * Лілку лише після того, як завантажиться редактор — а він
                  * потрібен на секунду пізніше.
+                 *
+                 * Функцією, а не об'єктом: об'єктна форма існує лише для
+                 * стабільності при переході на rolldown-версію Vite/Rollup.
                  */
-                manualChunks: {
-                    editor: [
-                        'codemirror',
-                        '@codemirror/view',
-                        '@codemirror/state',
-                        '@codemirror/language',
-                        '@codemirror/commands',
-                        '@codemirror/autocomplete',
-                        '@codemirror/legacy-modes/mode/lua',
-                    ],
+                manualChunks(id) {
+                    if (/\/node_modules\/(codemirror|@codemirror)\//.test(id)) return 'editor';
                 },
             },
         },
