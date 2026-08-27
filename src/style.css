@@ -319,54 +319,6 @@ body {
     min-width: 0;
 }
 
-/* Три мови — три вкладки, як у CodeBug */
-.tabs {
-    display: flex;
-    gap: 4px;
-    border-bottom: 1px solid var(--edge);
-}
-
-.tab {
-    appearance: none;
-    font: inherit;
-    font-weight: 600;
-    color: var(--muted);
-    background: transparent;
-    border: 1px solid transparent;
-    border-bottom: none;
-    border-radius: 8px 8px 0 0;
-    padding: 9px 16px;
-    cursor: pointer;
-    margin-bottom: -1px;
-}
-
-.tab:hover:not(.tab--active):not(:disabled) {
-    color: var(--ink);
-}
-
-.tab--active {
-    color: var(--ink);
-    background: var(--card);
-    border-color: var(--edge);
-}
-
-.tab:disabled {
-    opacity: 0.55;
-    cursor: default;
-}
-
-.tab__soon {
-    display: inline-block;
-    margin-left: 6px;
-    padding: 1px 6px;
-    border-radius: 999px;
-    background: #eef1ef;
-    color: var(--muted);
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-}
-
 .editor__bar {
     display: flex;
     align-items: center;
@@ -415,24 +367,6 @@ body {
     margin-left: auto;
     color: var(--muted);
     font-size: 12px;
-}
-
-.editor__placeholder {
-    display: grid;
-    place-items: center;
-    min-height: 300px;
-    padding: 24px;
-    text-align: center;
-    color: var(--muted);
-    background: repeating-linear-gradient(45deg, #fbfcfb, #fbfcfb 10px, #f5f7f6 10px, #f5f7f6 20px);
-    border: 1px dashed var(--edge);
-    border-radius: 10px;
-}
-
-.editor__placeholder strong {
-    display: block;
-    color: var(--ink);
-    margin-bottom: 6px;
 }
 
 .editor__console {
@@ -484,24 +418,6 @@ body {
 
 .editor__code .cm-scroller {
     overflow: auto;
-}
-
-.editor__placeholder {
-    display: grid;
-    place-items: center;
-    min-height: 300px;
-    padding: 24px;
-    text-align: center;
-    color: var(--muted);
-    background: repeating-linear-gradient(45deg, #fbfcfb, #fbfcfb 10px, #f5f7f6 10px, #f5f7f6 20px);
-    border: 1px dashed var(--edge);
-    border-radius: 10px;
-}
-
-.editor__placeholder strong {
-    display: block;
-    color: var(--ink);
-    margin-bottom: 6px;
 }
 
 .editor__console {
@@ -1175,15 +1091,13 @@ body {
 
 /* ------------------------------------------- кнопка справжньої Лілки ----- */
 
-.tabs__device {
-    margin-left: auto;
+.editor__device {
     display: inline-flex;
     align-items: center;
-    padding-bottom: 6px;
 }
 
 /* Замість неактивної кнопки — тихе пояснення, чому її немає */
-.tabs__device-note {
+.editor__device-note {
     color: var(--muted);
     font-size: 11px;
 }
@@ -1405,57 +1319,4 @@ body {
     font-size: 11px;
     color: #9cb3a8;
     white-space: nowrap;
-}
-
-/* ------------------------------------------------- блоковий редактор ---- */
-
-.editor__blocks {
-    height: 62vh;
-    min-height: 380px;
-    border: 1px solid var(--edge);
-    border-radius: 10px;
-    overflow: hidden;
-}
-
-.blockly {
-    width: 100%;
-    height: 100%;
-}
-
-/* Панель категорій у кольорах середовища, а не типових синіх */
-.blocklyToolboxDiv {
-    border-right: 1px solid var(--edge);
-    padding-top: 6px;
-}
-
-.blocklyTreeLabel {
-    font-family: inherit !important;
-    font-size: 13px !important;
-}
-
-/* Пошук над панеллю блоків */
-.blockly-wrap {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-}
-
-.blockly__search {
-    appearance: none;
-    margin: 0;
-    padding: 8px 12px;
-    font: inherit;
-    font-size: 13px;
-    color: var(--ink);
-    background: var(--card);
-    border: none;
-    border-bottom: 1px solid var(--edge);
-    outline: none;
-    -webkit-user-select: text;
-    user-select: text;
-}
-
-.blockly-wrap .blockly {
-    flex: 1;
-    min-height: 0;
 }

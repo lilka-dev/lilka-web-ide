@@ -11,7 +11,7 @@
  */
 
 import { EditorView, keymap, lineNumbers, highlightActiveLine, placeholder } from '@codemirror/view';
-import { EditorState, Compartment } from '@codemirror/state';
+import { EditorState } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { StreamLanguage, HighlightStyle, syntaxHighlighting, indentUnit } from '@codemirror/language';
 import { lua } from '@codemirror/legacy-modes/mode/lua';
@@ -106,13 +106,10 @@ function lilkaCompletions(context: CompletionContext): CompletionResult | null {
     };
 }
 
-export type EditorLanguage = 'lua' | 'js';
-
 export interface CodeEditor {
     dom: HTMLElement;
     getValue(): string;
     setValue(text: string): void;
-    setLanguage(language: EditorLanguage): Promise<void>;
     /** Ставить курсор на рядок — для переходу з повідомлення про помилку. */
     goToLine(line: number): void;
     focus(): void;
@@ -124,8 +121,6 @@ export function createCodeEditor(options: {
     onRun: () => void;
     onSave: () => void;
 }): CodeEditor {
-    const languageCompartment = new Compartment();
-
     const view = new EditorView({
         state: EditorState.create({
             doc: options.initial,
@@ -134,7 +129,7 @@ export function createCodeEditor(options: {
                 highlightActiveLine(),
                 history(),
                 indentUnit.of('    '),
-                languageCompartment.of(StreamLanguage.define(lua)),
+                StreamLanguage.define(lua),
                 syntaxHighlighting(HIGHLIGHT),
                 THEME,
                 autocompletion({ override: [lilkaCompletions], activateOnTyping: true }),
@@ -179,20 +174,6 @@ export function createCodeEditor(options: {
                 changes: { from: 0, to: view.state.doc.length, insert: text },
                 selection: { anchor: 0 },
             });
-        },
-        /**
-         * Підсвітка JavaScript вантажиться на вимогу.
-         *
-         * Вкладка mJS поки вимкнена, тож тягнути її розбір у кожне
-         * завантаження сторінки марно: це чверть ваги редактора заради
-         * можливості, якою поки не скористатися.
-         */
-        async setLanguage(language) {
-            const support =
-                language === 'js'
-                    ? (await import('@codemirror/lang-javascript')).javascript()
-                    : StreamLanguage.define(lua);
-            view.dispatch({ effects: languageCompartment.reconfigure(support) });
         },
         goToLine(line) {
             const total = view.state.doc.lines;

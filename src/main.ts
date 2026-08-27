@@ -230,21 +230,6 @@ editor.onSave((code) => {
     void host.addFile(scriptPath(), new TextEncoder().encode(code));
 });
 
-/**
- * Блоки й код — ДВА різні файли.
- *
- * `гра.blocks` зберігає самі блоки, `гра.lua` — згенерований із них код.
- * Blockly не вміє перетворювати код назад у блоки, тож якби вони жили в
- * одному файлі, правка коду руками мовчки знищила б усю роботу з блоками.
- *
- * Так само видно, що з чого взялося: у згенерованому файлі перший рядок про
- * це прямо каже.
- */
-editor.onBlocksSave((state, lua) => {
-    void host.addFile(`${ROOT}/main.blocks`, new TextEncoder().encode(state));
-    void host.addFile(`${ROOT}/main.lua`, new TextEncoder().encode(lua));
-});
-
 /* ------------------------------------------------- справжня Лілка ------- */
 
 /**
@@ -288,7 +273,7 @@ function drawDeviceButton(): void {
 
     if (!isSerialSupported()) {
         const note = document.createElement('span');
-        note.className = 'tabs__device-note';
+        note.className = 'editor__device-note';
         note.textContent = 'підключення до Лілки — у Chrome';
         note.title = 'Доступ до USB із веб-сторінки є лише в Chrome і Edge';
         slot.append(note);
@@ -367,18 +352,8 @@ async function runEditorCode(): Promise<void> {
     // би отримати попередню версію коду
     editor.flush();
 
-    // У режимі блоків запускається згенерований із них код
-    const code = editor.isBlocksMode() ? editor.blocksLua() : editor.getCode();
-    const path = editor.isBlocksMode() ? `${ROOT}/main.lua` : scriptPath();
-
-    if (editor.isBlocksMode() && !code.trim()) {
-        editor.print(
-            'Блоки порожні. Покладіть щось УСЕРЕДИНУ «малювати» або «щокадру» — ' +
-                'блок сам по собі не виконується.',
-            'err',
-        );
-        return;
-    }
+    const code = editor.getCode();
+    const path = scriptPath();
 
     surface.display.fillScreen(0);
     screen.present(true);
@@ -525,10 +500,6 @@ void (async () => {
             if (saved) editor.setCode(new TextDecoder().decode(saved));
         }
         editor.setFile(`${ROOT}/main.lua`);
-
-        // Блоки, якщо їх колись складали
-        const savedBlocks = host.vfs.read(`${ROOT}/main.blocks`);
-        if (savedBlocks) editor.setBlocks(new TextDecoder().decode(savedBlocks));
 
         refreshFiles();
     } catch (error) {

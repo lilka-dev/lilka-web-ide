@@ -1,9 +1,5 @@
 /**
- * Панель редактора: вкладки мов, поле коду, кнопки й консоль.
- *
- * Вкладок три, як і мов у меті проєкту: Blockly, Lua, mJS. Дві останні поки
- * без рантайму, і це показано прямо, а не приховано: вимкнена вкладка з
- * поясненням чесніша за її відсутність — видно, куди проєкт іде.
+ * Панель редактора: поле коду Lua, кнопки й консоль.
  *
  * Повноцінний редактор (підсвітка, номери рядків, автодоповнення зі
  * `lilka-api.json`) — окремий крок. Тут навмисно звичайне текстове поле: воно
@@ -12,26 +8,6 @@
 
 import { EXAMPLES } from '../examples/index.ts';
 import type { CodeEditor } from './code-editor.ts';
-
-export type LanguageId = 'blockly' | 'lua' | 'mjs';
-
-interface LanguageTab {
-    id: LanguageId;
-    title: string;
-    ready: boolean;
-    note?: string;
-}
-
-const LANGUAGES: LanguageTab[] = [
-    { id: 'blockly', title: 'Блоки', ready: true },
-    { id: 'lua', title: 'Lua', ready: true },
-    {
-        id: 'mjs',
-        title: 'mJS',
-        ready: false,
-        note: 'Двигун mJS збирається з keira/lib/mJS/src/mjs.c у WASM. Запускати цей код у движку браузера не можна: mJS — урізана підмножина ES, і браузер прийме те, що на залізі впаде.',
-    },
-];
 
 export interface EditorPanel {
     root: HTMLElement;
@@ -55,12 +31,6 @@ export interface EditorPanel {
     onRunOnDevice(handler: () => void): void;
     /** Підміняє консоль середовища консоллю Лілки. */
     showConsole(panel: HTMLElement | null): void;
-    /** Зберігає стан блоків і згенерований код. */
-    onBlocksSave(handler: (state: string, lua: string) => void): void;
-    setBlocks(state: string): void;
-    /** Код із блоків — потрібен для запуску. */
-    blocksLua(): string;
-    isBlocksMode(): boolean;
     /** Вибрано приклад — можливо, із супутніми файлами. */
     onExample(handler: (example: (typeof EXAMPLES)[number]) => void): void;
 }
@@ -68,10 +38,6 @@ export interface EditorPanel {
 export function createEditor(initialCode: string): EditorPanel {
     const root = document.createElement('section');
     root.className = 'editor';
-
-    // --- вкладки мов
-    const tabs = document.createElement('div');
-    tabs.className = 'tabs';
 
     /**
      * Редактор вантажиться після першого показу сторінки.
@@ -85,40 +51,6 @@ export function createEditor(initialCode: string): EditorPanel {
      */
     let code: CodeEditor | null = null;
     let pendingText = initialCode;
-
-    /**
-     * Блоковий редактор.
-     *
-     * Вантажиться на вимогу — при першому переході на вкладку. Blockly важить
-     * ще більше за CodeMirror, і тягнути його в кожне завантаження сторінки
-     * заради вкладки, на яку можуть жодного разу не натиснути, було б марно.
-     */
-    let blocks: import('./blockly-editor.ts').BlocklyEditor | null = null;
-    let blocksLoading = false;
-    let blocksText = '';
-
-    const blocksSlot = document.createElement('div');
-    blocksSlot.className = 'editor__blocks';
-    blocksSlot.hidden = true;
-
-    let blocksSaveHandler: (state: string, lua: string) => void = () => {};
-
-    async function ensureBlocks(): Promise<void> {
-        if (blocks || blocksLoading) return;
-        blocksLoading = true;
-
-        const { createBlocklyEditor } = await import('./blockly-editor.ts');
-        blocks = createBlocklyEditor({
-            onChange: () => {
-                if (!blocks) return;
-                blocksSaveHandler(blocks.save(), blocks.toLua());
-                setSaved();
-            },
-        });
-        blocksSlot.append(blocks.dom);
-        if (blocksText) blocks.load(blocksText);
-        blocks.resize();
-    }
 
     const stub = document.createElement('textarea');
     stub.className = 'editor__code editor__code--stub';
@@ -137,69 +69,6 @@ export function createEditor(initialCode: string): EditorPanel {
         if (code) code.setValue(text);
         else stub.value = text;
     }
-
-    const placeholder = document.createElement('div');
-    placeholder.className = 'editor__placeholder';
-    placeholder.hidden = true;
-
-    let active: LanguageId = 'lua';
-
-    const selectLanguage = (id: LanguageId): void => {
-        const language = LANGUAGES.find((l) => l.id === id);
-        if (!language) return;
-        active = id;
-
-        for (const button of tabs.querySelectorAll('button')) {
-            button.classList.toggle('tab--active', button.dataset.id === id);
-        }
-
-        const ready = language.ready;
-        const isBlocks = id === 'blockly';
-
-        (code?.dom ?? stub).hidden = !ready || isBlocks;
-        blocksSlot.hidden = !isBlocks;
-        fileBar.hidden = isBlocks;
-
-        if (isBlocks) {
-            void ensureBlocks().then(() => blocks?.resize());
-        } else if (ready) {
-            void code?.setLanguage(id === 'mjs' ? 'js' : 'lua');
-        }
-        placeholder.hidden = ready;
-        runButton.disabled = !ready;
-        if (!ready) {
-            placeholder.innerHTML = `<div><strong>${language.title} — ще попереду</strong>${language.note ?? ''}</div>`;
-        }
-    };
-
-    /**
-     * Кнопка підключення до справжньої Лілки.
-     *
-     * Стоїть праворуч у рядку вкладок: там вільно, і вона не мішається з
-     * «Запустити». Якщо браузер не вміє працювати з кабелем — замість кнопки
-     * тихий підпис із поясненням: неактивну кнопку тиснули б і не розуміли,
-     * чому нічого не стається.
-     */
-    const deviceSlot = document.createElement('span');
-    deviceSlot.className = 'tabs__device';
-
-    for (const language of LANGUAGES) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'tab';
-        button.dataset.id = language.id;
-        button.textContent = language.title;
-        button.disabled = !language.ready;
-        if (!language.ready) {
-            const badge = document.createElement('span');
-            badge.className = 'tab__soon';
-            badge.textContent = 'скоро';
-            button.append(badge);
-        }
-        button.addEventListener('click', () => selectLanguage(language.id));
-        tabs.append(button);
-    }
-    tabs.append(deviceSlot);
 
     // --- панель дій
     const bar = document.createElement('div');
@@ -243,7 +112,17 @@ export function createEditor(initialCode: string): EditorPanel {
     const status = document.createElement('span');
     status.className = 'editor__status';
 
-    bar.append(runButton, deviceRunButton, stopButton, picker, status);
+    /**
+     * Кнопка підключення до справжньої Лілки.
+     *
+     * Стоїть у панелі дій, праворуч: якщо браузер не вміє працювати з кабелем —
+     * замість кнопки тихий підпис із поясненням: неактивну кнопку тиснули б і
+     * не розуміли, чому нічого не стається.
+     */
+    const deviceSlot = document.createElement('span');
+    deviceSlot.className = 'editor__device';
+
+    bar.append(runButton, deviceRunButton, stopButton, picker, status, deviceSlot);
 
     /*
      * Рядок із назвою файлу.
@@ -285,24 +164,14 @@ export function createEditor(initialCode: string): EditorPanel {
         saveState.classList.add('editor__save--pending');
         if (saveTimer) clearTimeout(saveTimer);
         saveTimer = setTimeout(() => {
-            if (active === 'blockly') {
-                if (blocks) blocksSaveHandler(blocks.save(), blocks.toLua());
-            } else {
-                saveHandler(currentText());
-            }
+            saveHandler(currentText());
             setSaved();
         }, 600);
     }
 
     function saveNow(): void {
         if (saveTimer) clearTimeout(saveTimer);
-        // У режимі блоків код у файлі належить блокам: збереження текстового
-        // редактора затерло б його порожнім вмістом
-        if (active === 'blockly') {
-            if (blocks) blocksSaveHandler(blocks.save(), blocks.toLua());
-        } else {
-            saveHandler(currentText());
-        }
+        saveHandler(currentText());
         setSaved();
     }
 
@@ -313,7 +182,7 @@ export function createEditor(initialCode: string): EditorPanel {
     const replSlot = document.createElement('div');
     replSlot.className = 'editor__repl-slot';
 
-    root.append(tabs, bar, fileBar, stub, blocksSlot, placeholder, output, replSlot);
+    root.append(bar, fileBar, stub, output, replSlot);
 
     void (async () => {
         const { createCodeEditor } = await import('./code-editor.ts');
@@ -326,8 +195,6 @@ export function createEditor(initialCode: string): EditorPanel {
         code.dom.classList.add('editor__code');
         stub.replaceWith(code.dom);
     })();
-
-    selectLanguage('lua');
 
     return {
         root,
@@ -357,7 +224,7 @@ export function createEditor(initialCode: string): EditorPanel {
         },
         setState(state: string, running: boolean) {
             status.textContent = state;
-            runButton.disabled = running || active !== 'lua';
+            runButton.disabled = running;
             stopButton.disabled = !running;
         },
         onRun: (handler) => runButton.addEventListener('click', handler),
@@ -379,15 +246,6 @@ export function createEditor(initialCode: string): EditorPanel {
             deviceRunButton.hidden = !ready;
         },
         onRunOnDevice: (handler) => deviceRunButton.addEventListener('click', handler),
-        onBlocksSave: (handler) => {
-            blocksSaveHandler = handler;
-        },
-        setBlocks: (state) => {
-            blocksText = state;
-            blocks?.load(state);
-        },
-        blocksLua: () => blocks?.toLua() ?? '',
-        isBlocksMode: () => active === 'blockly',
         showConsole: (panel) => {
             replSlot.textContent = '';
             output.hidden = panel !== null;

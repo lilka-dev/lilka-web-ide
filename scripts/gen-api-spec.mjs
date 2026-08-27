@@ -4,8 +4,7 @@
  *
  * Читає LuaLS-анотації з `keira/addons/lualilka/library/*.lua` і перетворює їх
  * на машиночитаний JSON, з якого далі генеруються:
- *   - автодоповнення в редакторі (CodeMirror / Monaco)
- *   - визначення блоків Blockly + генератори Lua/JS
+ *   - автодоповнення в редакторі (CodeMirror)
  *   - заглушки та перевірка повноти емулятора
  *
  * Залежностей немає. Потрібен Node >= 18.
@@ -290,7 +289,7 @@ function rstToMarkdown(text) {
         .replace(/^\s*\*\s+/gm, '- ');
 }
 
-/** Перше речення / перший абзац — для однорядкових підказок і Blockly-тултіпів. */
+/** Перше речення / перший абзац — для однорядкових підказок редактора. */
 function summarize(text) {
     if (!text) return '';
     const firstPara = text.split(/\n\s*\n/)[0].replace(/\s+/g, ' ').trim();
