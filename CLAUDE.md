@@ -107,9 +107,9 @@ headless Chromium, `e2e/smoke.spec.ts`. Перед першим запуском
 браузер: `npx playwright install chromium`.
 
 Обидва набори підключені в CI: `deploy.yml` не пустить у production код, що
-не пройшов `typecheck` і `check`; `ci.yml` на кожен pull request додає ще й
-`test:e2e` і `build` — це єдине місце, де PR отримує автоматичну перевірку до
-злиття.
+не пройшов `typecheck` і `check`; `ci.yml` жене ще й `test:e2e` та `build` —
+на кожен pull request і на кожен push у `main`. Це єдине місце, де PR
+отримує автоматичну перевірку до злиття.
 
 ## Чого бракує найбільше
 

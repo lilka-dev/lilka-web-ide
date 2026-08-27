@@ -1,10 +1,12 @@
 name: CI
 
-# Основне навантаження deploy.yml несе на push у main, але той тригер не
-# бачить pull request-и — і зламаний код можна було б злити, не отримавши
-# жодної автоматичної перевірки до цього. Цей workflow — саме про PR.
+# deploy.yml теж жене typecheck і check перед публікацією, але не e2e — і не
+# бачить pull request. Тут — повний набір перевірок для PR і для push у main,
+# незалежно від того, що саме буде публікуватися.
 on:
   pull_request:
+  push:
+    branches: [main]
 
 jobs:
   test:
