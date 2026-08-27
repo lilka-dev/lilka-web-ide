@@ -106,8 +106,9 @@ npm run render:testcard  # PNG тест-карти без браузера
 `VITE_BASE` підставляється з назви репозиторію автоматично.
 
 `.github/workflows/ci.yml` робить те саме плюс `npm run test:e2e` і `npm run
-build` для кожного pull request: `deploy.yml` бачить лише push у `main`, тож
-без цього PR можна було б злити без жодної автоматичної перевірки.
+build` — на кожен pull request і на кожен push у `main`. Без нього PR можна
+було б злити без жодної автоматичної перевірки: `deploy.yml` на pull request
+не реагує.
 
 `public/coi-serviceworker.js` мусить лишатися окремим файлом поза бандлом і
 віддаватися з власного origin — інакше не буде `SharedArrayBuffer`, а без нього
