@@ -22,6 +22,8 @@
  * прямо.
  */
 
+import { t } from '../i18n/index.ts';
+
 /** `SERIAL_BAUD_RATE` у прошивці. */
 const BAUD_RATE = 115200;
 
@@ -70,7 +72,7 @@ export class LilkaDevice {
      */
     async connect(): Promise<boolean> {
         if (!isSerialSupported()) {
-            this.events.onError('Цей браузер не вміє працювати з USB. Потрібен Chrome або Edge.');
+            this.events.onError(t('device.browserUnsupported'));
             return false;
         }
 
@@ -86,7 +88,7 @@ export class LilkaDevice {
         } catch (error) {
             // Відмова у вікні вибору — не помилка, людина просто передумала
             if (error instanceof DOMException && error.name === 'NotFoundError') return false;
-            this.events.onError(`Не вдалося підключитися: ${describe(error)}`);
+            this.events.onError(t('device.connectFailed', { error: describe(error) }));
             return false;
         }
     }
@@ -128,13 +130,13 @@ export class LilkaDevice {
                 for (const line of lines) this.events.onLine(line);
             }
         } catch (error) {
-            this.events.onError(`Зв'язок із Лілкою обірвався: ${describe(error)}`);
+            this.events.onError(t('device.connectionLost', { error: describe(error) }));
             void this.disconnect();
         }
     }
 
     private async write(text: string): Promise<void> {
-        if (!this.writer) throw new Error('Лілка не підключена');
+        if (!this.writer) throw new Error(t('device.notConnected'));
         await this.writer.write(new TextEncoder().encode(text));
     }
 

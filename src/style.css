@@ -1089,6 +1089,32 @@ body {
     border-color: var(--teal);
 }
 
+/* ------------------------------------------------- мова інтерфейсу ------ */
+
+.editor__lang {
+    display: inline-flex;
+    border: 1px solid var(--edge);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.editor__lang-btn {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 10px;
+    cursor: pointer;
+}
+
+.editor__lang-btn--on {
+    background: var(--teal);
+    color: #fff;
+}
+
 /* ------------------------------------------- кнопка справжньої Лілки ----- */
 
 .editor__device {

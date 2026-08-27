@@ -1,446 +1,532 @@
-# Архітектура
+# Architecture
 
-Як влаштоване середовище всередині й **чому саме так**. Перелік файлів видно і
-без документа — цінні тут причини рішень, бо саме вони пояснюють, чому щось не
-можна «спростити».
+*[Читати українською](ARCHITECTURE.uk.md)*
 
-Головна вимога проєкту: програма має поводитися у браузері **точно так само**,
-як на залізі. Кожне рішення нижче так чи інакше випливає з неї.
+How the environment is built inside and **why it's built that way**. The file
+list is visible without a document — what's valuable here is the reasoning
+behind decisions, because that's what explains why something can't be
+"simplified."
+
+The project's main requirement: the program must behave in the browser
+**exactly like it does on hardware**. Every decision below follows from that,
+one way or another.
 
 ---
 
-## Загальна картина
+## The big picture
 
 ```
-                    ГОЛОВНИЙ ПОТІК                      ВОРКЕР
-                                                   
+                     MAIN THREAD                        WORKER
+
   ┌──────────────┐   ┌──────────────┐         ┌──────────────────┐
-  │  редактор    │   │   LuaHost    │         │   LuaRuntime     │
-  │  панель      │──▶│              │         │                  │
-  │  файлів      │   │  віртуальна  │─файли──▶│  wasmoon (Lua)   │
-  └──────────────┘   │  карта       │         │        │         │
+  │   editor     │   │   LuaHost    │         │   LuaRuntime     │
+  │   file       │──▶│              │         │                  │
+  │   panel      │   │  virtual     │─files──▶│  wasmoon (Lua)   │
+  └──────────────┘   │  card        │         │        │         │
                      │  (IndexedDB) │         │        ▼         │
-  ┌──────────────┐   │              │         │  прив'язки API   │
+  ┌──────────────┐   │              │         │  API bindings    │
   │   canvas     │◀──│   Screen     │         │        │         │
   │   280×240    │   └──────┬───────┘         │        ▼         │
-  └──────────────┘          │                 │    емулятор      │
-                            │                 │  (малювання)     │
+  └──────────────┘          │                 │    emulator      │
+                            │                 │   (drawing)       │
   ┌──────────────┐          │                 └────────┬─────────┘
-  │   кнопки     │──────────┤                          │
+  │   buttons    │──────────┤                          │
   └──────────────┘          │                          │
                             ▼                          ▼
                       ╔═══════════════════════════════════╗
                       ║        SharedArrayBuffer          ║
-                      ║  два кадрові буфери + стан кнопок ║
+                      ║  two frame buffers + button state ║
                       ╚═══════════════════════════════════╝
 ```
 
-Дві половини живуть у різних потоках і спілкуються через спільну пам'ять.
-Повідомлення між ними — лише для подій: запустити, зупинити, надрукувати,
-зіграти звук.
+The two halves live in different threads and talk through shared memory.
+Messages between them are only for events: run, stop, print, play a sound.
 
 ---
 
-## Чому Lua у воркері, а не в головному потоці
+## Why Lua runs in a worker, not the main thread
 
-Причина одна й вирішальна: **`util.sleep()` має справді блокувати**.
+There's one decisive reason: **`util.sleep()` must actually block**.
 
-На залізі `util.sleep(0.1)` зупиняє програму на 100 мс — це `vTaskDelay`.
-Відтворити таке в JavaScript можна лише через `Atomics.wait`, а браузер не
-дозволяє викликати його в головному потоці: це заморозило б усю сторінку.
+On hardware, `util.sleep(0.1)` stops the program for 100 ms — that's
+`vTaskDelay`. The only way to reproduce that in JavaScript is `Atomics.wait`,
+and the browser won't let you call it on the main thread: that would freeze
+the whole page.
 
-Якби замість цього зробити `sleep` асинхронним, довелося б переписувати
-користувацький код — а він має лишатися незмінним. Тому воркер.
+Making `sleep` asynchronous instead would mean rewriting user code — and it
+must stay unchanged. Hence the worker.
 
-### Заради цього потрібні COOP/COEP
+### This is why COOP/COEP are needed
 
-`SharedArrayBuffer` доступний лише за наявності заголовків
-`Cross-Origin-Opener-Policy` і `Cross-Origin-Embedder-Policy`. GitHub Pages не
-дає їх задати, тому в `public/` лежить `coi-serviceworker.js` — service worker,
-який підставляє їх сам. Через це на першому візиті сторінка один раз
-перезавантажується.
+`SharedArrayBuffer` is only available with the `Cross-Origin-Opener-Policy`
+and `Cross-Origin-Embedder-Policy` headers set. GitHub Pages can't set them,
+so `public/` carries `coi-serviceworker.js` — a service worker that installs
+them itself. Because of this, the page reloads once on the first visit.
 
-Файл мусить лишатися **поза бандлом** і віддаватися з власного origin. Якщо
-його зібрати разом з усім іншим — рантайм не запуститься.
+The file must stay **outside the bundle** and be served from its own origin.
+If it were bundled with everything else, the runtime wouldn't start.
 
 ---
 
-## Хто задає темп
+## Who sets the pace
 
-**Воркер**, а не браузер.
+**The worker**, not the browser.
 
 ```
-воркер:          update → draw → queue_draw → sleep(33 - витрачено)
+worker:          update → draw → queue_draw → sleep(33 - elapsed)
                     │                  │
-                    │                  └──▶ публікує кадр у спільній пам'яті
+                    │                  └──▶ publishes the frame into shared memory
                     │
-головний потік:  requestAnimationFrame → present() → canvas
+main thread:  requestAnimationFrame → present() → canvas
 ```
 
-30 кадрів на секунду з цілими 33 мс — рівно як `perfectDelta` у
-`AbstractLuaRunnerApp::execute()`. Головний потік лише виводить те, що є, зі
-своєю частотою (зазвичай 60 Гц).
+30 frames per second at a flat 33 ms — exactly like `perfectDelta` in
+`AbstractLuaRunnerApp::execute()`. The main thread just presents whatever is
+there, at its own rate (usually 60 Hz).
 
-Це не спрощення. На залізі дисплей теж оновлюється незалежно від того, як
-швидко рахує програма, тож розв'язка відтворює реальність.
+This isn't a simplification. On hardware, the display also refreshes
+independently of how fast the program computes, so this decoupling reproduces
+reality.
 
-### Подвійна буферизація з пасткою
+### Double buffering, with a trap
 
-`queueDraw()` **міняє буфери місцями** і нічого не очищає. Отже програма
-наступного кадру малює поверх кадру, який був **два кадри тому**.
+`queueDraw()` **swaps the buffers** and clears nothing. So next frame's
+program draws over the frame that was **two frames ago**.
 
-Lua-програма без `display.fill_screen` побачить не слід, а мерехтіння між двома
-старими кадрами. Це поведінка прошивки, і вона відтворена навмисно.
+A Lua program without `display.fill_screen` won't see a trail — it'll see
+flicker between two stale frames. This is firmware behavior, and it's
+reproduced on purpose.
 
-З цього ж випливає менш очевидне: **текстовий стан належить канві, а канв
-дві**. Курсор, шрифт і колір у Arduino_GFX — поля об'єкта канви. Тому
-`display.set_cursor`, викликаний один раз, впливає лише на **один** із двох
-кадрів. У коді через це по одному `TextRenderer` на буфер.
+A less obvious consequence follows from the same fact: **text state belongs
+to the canvas, and there are two canvases**. Cursor, font, and color in
+Arduino_GFX are fields on the canvas object. So `display.set_cursor`, called
+once, affects only **one** of the two frames. That's why the code keeps one
+`TextRenderer` per buffer.
 
 ---
 
-## Захист від зависання
+## Hang protection
 
-Два незалежні шари, і другий свідомо не покладається на перший.
+Two independent layers, and the second deliberately doesn't rely on the
+first.
 
-**М'який: `debug.sethook`.** Лічильник інструкцій Lua. Дозволяє програмі
-завершитися охайно, з повідомленням і номером рядка.
+**Soft: `debug.sethook`.** A Lua instruction counter. Lets the program
+terminate cleanly, with a message and a line number.
 
-Хук ставиться **лише навколо тіла скрипта** і знімається одразу після. Інакше
-він рахував би й інструкції головного циклу, і будь-яка достатньо довга
-програма впиралася б у ліміт просто тому, що працює довго.
+The hook is installed **only around the script body** and removed right
+after. Otherwise it would also count the main loop's instructions, and any
+sufficiently long-running program would hit the limit simply for running for
+a while.
 
-**Твердий: `worker.terminate()`.** Якщо лічильник кадрів не росте понад 2
-секунди, воркер убивається разом із усім станом Lua. Не залежить ні від чого
-всередині Lua, тому його не вимкнути зі скрипта. Цей шар свідомо не покладається
-на `debug.sethook`: якщо в лічильнику інструкцій колись знайдеться діра, зависла
-програма все одно не заморозить сторінку назавжди.
+**Hard: `worker.terminate()`.** If the frame counter hasn't grown in over 2
+seconds, the worker is killed along with all of Lua's state. It doesn't
+depend on anything inside Lua, so a script can't disable it. This layer
+deliberately doesn't rely on `debug.sethook`: if a hole ever turns up in the
+instruction counter, a hung program still won't freeze the page forever.
 
 ---
 
-## Три шари й межа між ними
+## Three layers and the boundary between them
 
 ```
-  src/ui/          інтерфейс: редактор, панель файлів, намальована плата
+  src/ui/          interface: editor, file panel, drawn board
         │
-  src/runtime/     прив'язки Lua, воркер, спільна пам'ять
+  src/runtime/     Lua bindings, worker, shared memory
         │
-  src/emulator/    малювання, шрифти, зображення, файлова система
+  src/emulator/    drawing, fonts, images, file system
 ```
 
-**`src/emulator/` не знає про Lua взагалі.** Малювання, шрифти й файлова
-система — окремий шар від рантайму, з яким узгоджується лише через тонкі
-прив'язки в `src/runtime/`.
+**`src/emulator/` knows nothing about Lua at all.** Drawing, fonts, and the
+file system are a separate layer from the runtime, which they coordinate with
+only through the thin bindings in `src/runtime/`.
 
-Перевіряється просто: `scripts/render-testcard.mts` малює тест-карту під Node,
-без браузера й без Lua.
+That's easy to verify: `scripts/render-testcard.mts` draws a test card under
+Node, without a browser and without Lua.
 
-`src/runtime/runtime.ts` теж навмисно **не залежить від Web Worker** — тому
-рантайм можна ганяти під Node, і саме так працюють перевірки в
-`check-runtime.mts`.
+`src/runtime/runtime.ts` is also deliberately **not dependent on the Web
+Worker** — so the runtime can be run under Node, which is exactly how the
+checks in `check-runtime.mts` work.
 
 ---
 
-## Що згенеровано, а що написано руками
+## Interface language
 
-Найважливіше правило проєкту: **жодного числа про залізо в коді вручну**.
+`src/i18n/` follows the same "thin layer, kept separate" pattern as the
+three layers above — it's not a fourth layer of its own, just a boundary
+inside `src/ui/`.
 
-| Що | Скрипт | Джерело |
+**Translated:** app chrome — buttons, panels, menus, dialogs, status and
+error messages, and the autocompletion tooltips pulled from
+`lilka-api.json` (see below).
+
+**Not translated, on purpose:**
+
+- **The drawn board's silkscreen** (`src/ui/shell.ts`) — the logo and motto
+  are a reproduction of what's physically printed on a real Lilka. Translating
+  them would break hardware fidelity, the same principle that governs
+  everything else in this document.
+- **Widget content** (`alertUI`, `keyboardUI`, `progressUI`) — titles and
+  messages there come from the Lua program itself, not from the environment.
+  It's program content, like console output; the environment has no business
+  translating what a script chose to print.
+- **Internal exception messages** in `src/runtime/` and `src/emulator/` —
+  rare "this should never happen" paths that don't go through the UI layer.
+  Threading i18n through them would compromise the "doesn't know about the UI"
+  property that makes those layers testable under Node in the first place.
+
+State lives **only in memory** (`src/i18n/lang.ts`): the default comes from
+`navigator.language`, and a visible toggle can switch it for the session.
+This is deliberate, not an oversight — `localStorage`/`sessionStorage` aren't
+used for application state in the emulator's code until a proper virtual
+file system storage layer exists for settings.
+
+### English descriptions for the API can't live in the generated file
+
+`lilka-api.json` is extracted from the firmware's Lua annotations, and
+Lilka is a Ukrainian community project — those annotations are written in
+Ukrainian. Editing the generated JSON by hand to add English text isn't an
+option: it would be silently lost on the next `gen-api-spec.mjs` run.
+
+So the English text lives in a separate, hand-maintained file,
+`scripts/completions-i18n-en.mjs`, keyed by the **fully qualified** name
+(`display.fill_screen`, `alertUI.draw`) — not by the completion `label` a
+user sees, because several widget classes (`alertUI`, `keyboardUI`,
+`progressUI`) have same-named methods (`draw`, `setMessage`) with different
+meanings, and the label alone can't tell them apart. `gen-completions.mjs`
+looks up each entry by that qualified name and emits both `info` (Ukrainian)
+and `infoEn` (English) into `completions.ts`; `check-completions.mts` fails
+the build if a Ukrainian description has no English counterpart.
+
+---
+
+## What's generated, and what's handwritten
+
+The project's most important rule: **no hardware numbers written by hand in
+the code**.
+
+| What | Script | Source |
 |---|---|---|
-| `board.json` — екран, кнопки, піни, константи | `gen-*` вручну зібраний | `sdk/config.h`, `boards/lilka_v2.json` |
-| `lilka-api.json` — 181 функція з типами й описами | `gen-api-spec.mjs` | `keira/addons/lualilka/library/*.lua` |
-| `fonts/*.json` — 9 шрифтів із бітмапами глифів | `gen-fonts.mjs` | `u8g2/csrc/u8g2_fonts.c` |
+| `board.json` — screen, buttons, pins, constants | `gen-*`, assembled by hand | `sdk/config.h`, `boards/lilka_v2.json` |
+| `lilka-api.json` — 181 functions with types and descriptions | `gen-api-spec.mjs` | `keira/addons/lualilka/library/*.lua` |
+| `fonts/*.json` — 9 fonts with glyph bitmaps | `gen-fonts.mjs` | `u8g2/csrc/u8g2_fonts.c` |
 | `fmath-tables.ts` — sin360, sin32 | `gen-fmath.mjs` | `sdk/lilka/fmath.cpp` |
-| `notes.ts` — 97 нот | `gen-notes.mjs` | `sdk/lilka/buzzer.h` |
-| `icons.ts` — 12 піктограм: клавіатура й файли | `gen-icons.mjs` | `sdk/lilka/icons/*.h`, `keira/src/apps/icons/*.h` |
-| `coverage.json` — звіт покриття API | `gen-coverage.mts` | запуск справжнього рантайму |
-| `completions.ts` — 253 підказки редактора | `gen-completions.mjs` | `lilka-api.json` |
+| `notes.ts` — 97 notes | `gen-notes.mjs` | `sdk/lilka/buzzer.h` |
+| `icons.ts` — 12 icons: keyboard and files | `gen-icons.mjs` | `sdk/lilka/icons/*.h`, `keira/src/apps/icons/*.h` |
+| `coverage.json` — API coverage report | `gen-coverage.mts` | running the real runtime |
+| `completions.ts` — 253 editor hints | `gen-completions.mjs` | `lilka-api.json` |
 
-Усе це лежить у `src/generated/` і **не редагується вручну**. Змінилася
-прошивка — перезапустити скрипт, а не правити двадцять місць у коді.
+All of this lives in `src/generated/` and **is never hand-edited**. When the
+firmware changes, rerun the script instead of fixing twenty places in the
+code.
 
-Побічний виграш: `gen-api-spec.mjs` звіряє анотації з фактичними сигнатурами
-функцій. Саме так знайшлася частина розбіжностей між документацією та кодом
-прошивки.
+A side benefit: `gen-api-spec.mjs` cross-checks the annotations against the
+functions' actual signatures. That's how some of the mismatches between the
+documentation and the firmware code were found.
 
-**Анотації — не остання інстанція.** Джерело правди — те, що прошивка
-реєструє в `lua_State`; анотації подекуди з ним розходяться, і успадкувати
-помилку мовчки не можна: з цієї специфікації виростають і автодоповнення, і
-перевірка повноти емулятора. Тому в `gen-api-spec.mjs` є два явні переліки,
-кожен пункт — із посиланням на місце в C++:
+**The annotations aren't the final authority.** The source of truth is what
+the firmware actually registers in `lua_State`; the annotations sometimes
+disagree with it, and silently inheriting the error isn't an option: both
+autocompletion and the emulator's completeness check grow out of this
+specification. That's why `gen-api-spec.mjs` has two explicit lists, each
+entry linked to a spot in the C++:
 
-- `FIRMWARE_RENAMES` — анотація зве функцію інакше, ніж прошивка. Такий випадок
-  зараз один: `display.draw_elipse` / `fill_elipse` з однією «l», тоді як
-  `lualilka_display.cpp` реєструє `draw_ellipse` / `fill_ellipse` і ніколи не
-  реєстрував інакше. Поки помилка жила в специфікації, у браузері працювала
-  назва, якої немає на залізі, — і навпаки.
-- `FIRMWARE_EXTRAS` — прошивка реєструє, а анотації не описують зовсім. Зараз
-  це `console.print`: глобальна функція, якою користуються приклади в самих
-  анотаціях (`console.print(state.path)` у `state.lua`).
+- `FIRMWARE_RENAMES` — the annotation names a function differently than the
+  firmware does. There's currently one such case: `display.draw_elipse` /
+  `fill_elipse` with a single "l", while `lualilka_display.cpp` registers
+  `draw_ellipse` / `fill_ellipse` and never registered anything else. While
+  the error lived in the spec, the browser offered a name that doesn't exist
+  on hardware — and vice versa.
+- `FIRMWARE_EXTRAS` — the firmware registers something the annotations don't
+  describe at all. Right now that's `console.print`: a global function used
+  by the examples inside the annotations themselves
+  (`console.print(state.path)` in `state.lua`).
 
-Повторне оголошення простору імен помилкою не вважається, а описи
-об'єднуються: `lualilka_fs.h` і `lualilka_sdcard.h` задають `FILE_OBJECT` тим
-самим рядком `"File"`, тож метатаблиця в прошивці буквально одна — просто
-описана у двох файлах анотацій. Помилкою лишається розбіжність підписів.
-
----
-
-## Малювання: чому не Canvas 2D
-
-`ctx.arc()`, `ctx.lineTo()`, `ctx.fillRect()` згладжують краї й дають **інші
-пікселі**, ніж ST7789. Для навчального середовища це найдорожча можлива
-помилка: віртуальний екран показував би не те, що покаже справжній.
-
-Тому `src/emulator/framebuffer.ts` — це порт растрових примітивів
-`Arduino_GFX.cpp` рядок у рядок, у власний `Uint16Array` формату RGB565.
-
-Кадровий буфер саме RGB565, а не RGB888 із подальшим квантуванням: інакше
-програма могла б показати відтінки, яких панель фізично не відтворює.
-Розширення до 24 біт відбувається один раз, таблицею на 65536 записів, уже при
-виводі на canvas.
-
-Масштаб — **лише цілий**. При дробовому браузер розмиває піксель-арт навіть з
-`image-rendering: pixelated`.
-
-Тригонометрія береться з таблиць прошивки, а не з `Math.sin`: `fmath.cpp`
-містить `sin360[360]` зі значеннями на шість знаків, оголошеними як `float`.
-Відхилення до 5.3e-7 — дрібниця, доки не згадати про `static_cast<int32_t>`
-після множення. Тоді вона зсуває піксель.
+A namespace declared more than once isn't treated as an error; the
+descriptions are merged instead: `lualilka_fs.h` and `lualilka_sdcard.h` both
+define `FILE_OBJECT` with the same string, `"File"`, so the metatable in the
+firmware is literally one and the same — just described in two annotation
+files. A mismatch between the two remains an error.
 
 ---
 
-## Шрифти
+## Drawing: why not Canvas 2D
 
-Дев'ять шрифтів `u8g2_font_*_t_cyrillic` розпаковуються **на етапі збірки**, а
-не в рантаймі. У браузері немає ні декодера формату u8g2, ні WASM — лише готові
-бітмапи по кодпоінтах, окремими чанками по 2–5 КБ gzip.
+`ctx.arc()`, `ctx.lineTo()`, `ctx.fillRect()` antialias edges and produce
+**different pixels** than the ST7789. For a learning environment, that's the
+most expensive possible mistake: the virtual screen would show something
+other than what a real one shows.
 
-Позиціювання взяте з `Arduino_GFX::write()`, бо саме він виконується на Лілці:
-`cursorY` — це **базова лінія**, перенос рядка додає `scaleY * max_char_height`
-(а не висоту з ascent/descent — це різні числа), курсор зсувається на
-`delta_x`, а не на ширину бітмапи.
+That's why `src/emulator/framebuffer.ts` is a line-by-line port of
+`Arduino_GFX.cpp`'s raster primitives, into its own `Uint16Array` in RGB565
+format.
+
+The frame buffer is RGB565 itself, not RGB888 with later quantization:
+otherwise the program could show shades the panel physically can't
+reproduce. Expansion to 24 bits happens once, via a 65536-entry table, right
+when presenting to the canvas.
+
+Scale is **integer only**. At a fractional scale the browser blurs pixel art
+even with `image-rendering: pixelated`.
+
+Trigonometry is taken from the firmware's tables, not from `Math.sin`:
+`fmath.cpp` contains `sin360[360]` with values to six decimal places,
+declared as `float`. A deviation of up to 5.3e-7 is nothing — until you
+remember the `static_cast<int32_t>` after the multiplication. Then it shifts
+a pixel.
 
 ---
 
-## Файлова система
+## Fonts
 
-Побудована за зразком нової VFS у KeiraOS (`src/keira/vfs/`), а не за старими
-ардуїнівськими обгортками — у заголовку `vfs.h` прошивки сказано прямо:
-«if possible, just stick to a well documented/tested/used POSIX file api».
+The nine `u8g2_font_*_t_cyrillic` fonts are unpacked **at build time**, not
+at runtime. The browser has neither a u8g2 format decoder nor WASM for it —
+just ready-made bitmaps by codepoint, in separate 2–5 KB gzip chunks.
+
+Positioning is taken from `Arduino_GFX::write()`, because that's what runs
+on the Lilka: `cursorY` is the **baseline**, a line break adds
+`scaleY * max_char_height` (not the height from ascent/descent — those are
+different numbers), and the cursor moves by `delta_x`, not by the bitmap
+width.
+
+---
+
+## File system
+
+Modeled after the new VFS in KeiraOS (`src/keira/vfs/`), not the old Arduino
+wrappers — the firmware's `vfs.h` header says so directly: "if possible, just
+stick to a well documented/tested/used POSIX file api."
 
 ```
-/          RootFs    тільки читання, плаский перелік монтувань
-/sd        MemoryFs  карта пам'яті       ← зберігається в IndexedDB
-/spiffs    MemoryFs  внутрішня флеш      ← зберігається
-/tmp       MemoryFs  рамдиск у PSRAM     ← НЕ зберігається
+/          RootFs    read-only, flat list of mounts
+/sd        MemoryFs  memory card      ← persisted in IndexedDB
+/spiffs    MemoryFs  internal flash   ← persisted
+/tmp       MemoryFs  PSRAM ramdisk    ← NOT persisted
 ```
 
-`/tmp` навмисно не потрапляє в постійне сховище: на залізі це рамдиск, і після
-перезавантаження він порожній.
+`/tmp` deliberately never reaches persistent storage: on hardware it's a
+ramdisk, and it's empty after a reboot.
 
-### Чому файли передаються у воркер цілком
+### Why files are handed to the worker whole
 
-`resources.load_image` **синхронний**, а IndexedDB — асинхронний. Прочитати файл
-у момент виклику неможливо.
+`resources.load_image` is **synchronous**, and IndexedDB is asynchronous.
+There's no way to read a file at the moment of the call.
 
-Тому віртуальна карта живе на головному потоці, а перед запуском програми її
-вміст передається у воркер повністю. Так само з PNG: він розпаковується в RGBA
-заздалегідь, бо синхронного декодера в браузері немає.
+So the virtual card lives on the main thread, and its entire contents are
+handed to the worker before the program starts. Same with PNG: it's unpacked
+to RGBA ahead of time, because there's no synchronous decoder in the browser.
 
-### Два різні правила шляхів
+### Two different path rules
 
-Це не наша примха, а поведінка прошивки:
+This isn't our quirk — it's firmware behavior:
 
-- `resources.*` і `fs.*` — відносний шлях від **теки скрипта**
-  (`luapath_to_path`); порожній рядок означає корінь
-- `sdcard.*` — приклеювання до `"/sd"` **простим склеюванням**, без роздільника
+- `resources.*` and `fs.*` — a path relative to the **script's folder**
+  (`luapath_to_path`); an empty string means the root
+- `sdcard.*` — glued onto `"/sd"` by **plain concatenation**, with no
+  separator
 
-Через друге `sdcard.open("a.txt")` шукає `/sda.txt` і нічого не знаходить. Ми це
-відтворюємо, але додаємо підказку в консоль середовища — консолі на залізі не
-існує, тож пояснення нічого не ламає.
+Because of the second rule, `sdcard.open("a.txt")` looks for `/sda.txt` and
+finds nothing. We reproduce that, but add a hint in the environment's
+console — there's no console on hardware, so the explanation breaks nothing.
 
 ---
 
-## Особливості заліза, відтворені навмисно
+## Hardware quirks, reproduced on purpose
 
-Найцінніше знання проєкту. Кожен пункт знайдений читанням коду прошивки й
-закріплений перевіркою — щоб «виправлення» не проїхало непоміченим.
+The project's most valuable knowledge. Every item here was found by reading
+the firmware's code and locked down with a check — so a "fix" doesn't slip
+through unnoticed.
 
-**Екран 280×240, а не 240×280.** Панель справді 240×280, але `config.h` задає
-`ROTATION 3`, а Arduino_GFX при повороті 1/3 міняє ширину з висотою.
+**The screen is 280×240, not 240×280.** The panel really is 240×280, but
+`config.h` sets `ROTATION 3`, and Arduino_GFX swaps width and height on a 1/3
+rotation.
 
-**Arduino_GFX робить кола не як Adafruit_GFX.** `drawCircle` викликає еліпсовий
-хелпер, а не класичний midpoint. Дуги в Adafruit узагалі відсутні.
+**Arduino_GFX draws circles differently from Adafruit_GFX.** `drawCircle`
+calls an ellipse helper, not the classic midpoint algorithm. Arcs don't exist
+in Adafruit at all.
 
-**`writeEllipseHelper` при `ry == 0` використовує `ry` там, де очікувався б
-`rx`.** Схоже на помилку, але залізо поводиться саме так.
+**`writeEllipseHelper` uses `ry` where `rx` would be expected, when
+`ry == 0`.** Looks like a bug, but that's exactly how the hardware behaves.
 
-**Цілочисельне ділення відкидає дріб у бік нуля** — `Math.trunc`, а не
-`Math.floor`. З `floor` заповнені трикутники з від'ємним нахилом і обернені
-спрайти зсуваються на піксель.
+**Integer division truncates toward zero** — `Math.trunc`, not
+`Math.floor`. With `floor`, filled triangles with a negative slope and
+flipped sprites shift by a pixel.
 
-**Обертання зображення без прозорого кольору дає БІЛІ кути.** Поза межами
-джерела пишеться `transparentColor`, тобто `-1`, а в `uint16_t` це `0xFFFF`.
+**Rotating an image with no transparent color gives WHITE corners.** Outside
+the source's bounds, `transparentColor` is written, i.e. `-1`, and as a
+`uint16_t` that's `0xFFFF`.
 
-**`math` замінюється цілком, а не доповнюється.** На Лілці немає `math.huge`,
+**`math` is replaced wholesale, not extended.** Lilka has no `math.huge`,
 `math.fmod`, `math.tointeger`, `math.type`.
 
-**`math.random(a, b)` не включає верхню межу** — семантика Arduino `random()`.
-**`math.round`** округлює половину від нуля.
+**`math.random(a, b)` doesn't include the upper bound** — that's Arduino
+`random()`'s semantics. **`math.round`** rounds half away from zero.
 
-**Ціле чи дробове видно в результаті.** Прошивка віддає майже всю математику
-через `lua_pushnumber`, тож `math.sin(0)` друкується як `0.0`, а
-`math.floor(2.7)` як `2`.
+**Whether a result is integer or float is visible in the output.** The
+firmware returns almost all math through `lua_pushnumber`, so `math.sin(0)`
+prints as `0.0`, and `math.floor(2.7)` as `2`.
 
-**BMP відкидає альфу, PNG враховує.** У BMP читаються перші три байти пікселя.
+**BMP drops alpha, PNG keeps it.** Only the first three bytes of a BMP pixel
+are read.
 
-**BMP не вирівнює рядки на 4 байти** — 24-бітний файл із шириною, не кратною 4,
-«їде» по діагоналі. **BMP «згори вниз»** не завантажується взагалі, бо висота
-читається беззнаково.
+**BMP doesn't align rows to 4 bytes** — a 24-bit file with a width that isn't
+a multiple of 4 skews diagonally. **A "top-down" BMP** doesn't load at all,
+because the height is read as unsigned.
 
-**`sdcard.ls` на порожньому каталозі кидає помилку**, а `fs.ls` — ні: там
-помилкою є лише невдалий `opendir`. **`file.exists()`** означає «чи вдалося
-відкрити». **`file.write`** обривається на нульовому байті, хоча `file.read`
-двійково-безпечний. **`fopen` у режимі `"w"` обрізає** наявний файл до нуля, а
-`"a"` ставить позицію одразу в кінець.
+**`sdcard.ls` throws on an empty directory**, but `fs.ls` doesn't: there,
+only a failed `opendir` is an error. **`file.exists()`** means "could it be
+opened." **`file.write`** stops at a null byte, even though `file.read` is
+binary-safe. **`fopen` in `"w"` mode truncates** an existing file to zero,
+and `"a"` sets the position straight to the end.
 
-**`state` на першому запуску — `nil`, а не порожня таблиця.** Глобальна змінна
-з'являється лише тоді, коли поруч зі скриптом лежить файл `.state`, тож
-програма починає з `state = state or {}` — саме так написано в прикладі до
-анотації. Метатаблицю зі `save`/`reset`/`clear`/`path` чіпляє `__newindex`
-глобальної таблиці, і спрацьовує він лише на **перше** присвоєння.
+**`state` on the first run is `nil`, not an empty table.** The global
+variable only appears once a `.state` file sits next to the script, so a
+program starts with `state = state or {}` — that's exactly what the example
+next to the annotation says. A metatable with `save`/`reset`/`clear`/`path`
+is attached by the global table's `__newindex`, and it only fires on the
+**first** assignment.
 
-**`state` зберігається сам** при завершенні програми — `LuaFileRunnerApp::run()`
-пише файл після `execute()` безумовно, і після помилки теж. **`clear()` видаляє
-файл** і робить `state` рівним `nil`; **`reset()` файл не чіпає**, а перечитує
-його, відкидаючи незбережене. Числа проходять через `%lf`, тож збережене `42`
-повертається як `42.0`.
+**`state` saves itself** when the program ends — `LuaFileRunnerApp::run()`
+writes the file after `execute()` unconditionally, even after an error.
+**`clear()` deletes the file** and sets `state` to `nil`; **`reset()` doesn't
+touch the file**, it rereads it, discarding anything unsaved. Numbers go
+through `%lf`, so a saved `42` comes back as `42.0`.
 
-**`display.print` і `console.print` друкують назву типу** для всього, що не
-рядок і не число: `display.print(true)` малює `boolean`. Звичайний `print`
-цього не робить — прошивка його не перевизначає.
+**`display.print` and `console.print` print the type name** for anything
+that isn't a string or a number: `display.print(true)` draws `boolean`. The
+plain `print` doesn't do this — the firmware doesn't override it.
 
-**`math.sign` відкидає дріб ще до порівняння** (`int value =
-luaL_checknumber(...)`), тож `math.sign(0.5)` дорівнює `0`. **`math.min`,
-`max`, `sum`, `avg`** читають лише масивну частину таблиці, через `lua_rawlen`
-і `lua_rawgeti`: `math.max{a = 1, b = 2}` не рахує двійку, а падає.
+**`math.sign` truncates the fraction before comparing** (`int value =
+luaL_checknumber(...)`), so `math.sign(0.5)` equals `0`. **`math.min`,
+`max`, `sum`, `avg`** only read a table's array part, via `lua_rawlen` and
+`lua_rawgeti`: `math.max{a = 1, b = 2}` doesn't skip the two, it crashes.
 
-**Короткий дотик не губиться.** На залізі `justPressed` виставляє
-перехоплювач контролера — на самому фронті, а `getState()` лише забирає
-прапорець. Тому натискання, коротше за кадр, там видно. У браузері рівень
-кнопки такий дотик не показав би взагалі, тож у спільній пам'яті лежать не
-лише рівні, а й лічильники натискань і відпускань; воркер порівнює їх, а не
-миттєвий знімок. З тієї ж причини `controller.get_state()` знімає стан сам —
-на залізі його можна читати й з тіла скрипта, і з власного циклу
-`while true do ... util.sleep() end`, де головний цикл середовища не працює.
+**A short tap isn't lost.** On hardware, `justPressed` is set by a
+controller interrupt handler — right at the edge — and `getState()` merely
+clears the flag. So a press shorter than a frame is still visible there. In
+the browser, a level-based reading of the button wouldn't show such a tap at
+all, so shared memory holds not just levels but press/release counters too;
+the worker compares them, rather than taking an instant snapshot. For the
+same reason, `controller.get_state()` snapshots the state itself — on
+hardware it can be read both from the script body and from a script's own
+loop, `while true do ... util.sleep() end`, where the environment's main loop
+isn't running.
 
-**Послідовність запуску:** очистити канву → тіло скрипта → `queueDraw` →
-**знову** очистити → `lilka.init` → `queueDraw` → цикл.
+**Startup sequence:** clear the canvas → script body → `queueDraw` →
+clear **again** → `lilka.init` → `queueDraw` → the loop.
 
-**`isFinished()` у віджетах — не геттер:** він скидає прапорець `done`.
-Другий виклик поспіль поверне `false`.
+**`isFinished()` on widgets isn't a getter:** it clears the `done` flag. A
+second call in a row returns `false`.
 
-**`ProgressDialog::draw` передає для тіла `top` замість `mid`** — межа тексту
-починається на восьму частину вище, ніж в `Alert`. Схоже на дефект прошивки.
+**`ProgressDialog::draw` passes `top` for the body instead of `mid`** — the
+text boundary starts an eighth higher than in `Alert`. Looks like a firmware
+defect.
 
-**Alert реагує на A ще до `addActivationButton`** — конструктор додає її сам.
+**Alert reacts to A even before `addActivationButton`** — the constructor
+adds it itself.
 
-**Єдиний свідомий відступ від первотвору: віджет не публікує кадр сам.**
-У прошивці `draw()` віджета викликає `queueDraw()`, і головний цикл робить це
-ще раз — виходить два обміни буферів на кадр, а екран поперемінно показує
-віджет і застарілий буфер. Дефект надіслано команді прошивки (D5); до
-виправлення емулятор публікує кадр лише з головного циклу, бо інакше віджети
-непридатні до використання. Закріплено перевірками 18 і 19 у `check-runtime`.
+**The one deliberate departure from the original: a widget doesn't publish
+its own frame.** In the firmware, a widget's `draw()` calls `queueDraw()`,
+and the main loop does it again — that's two buffer swaps per frame, and the
+screen alternates between the widget and a stale buffer. The defect has been
+reported to the firmware team (D5); until it's fixed, the emulator publishes
+a frame only from the main loop, because otherwise widgets are unusable.
+Locked down by checks 18 and 19 in `check-runtime`.
 
-**Вікна діляться на восьмі частини екрана** (`height/8`), а не мають фіксованих
-розмірів. Заголовок — 6x13 подвійним розміром, тіло — 9x15.
+**Windows are divided into eighths of the screen** (`height/8`), rather than
+having fixed sizes. The title uses 6x13 at double size, the body 9x15.
 
 ---
 
-## Зв'язок зі справжньою Лілкою
+## Talking to a real Lilka
 
-Через Web Serial, тобто лише в браузерах на Chromium. У Firefox і Safari
-доступу до кабелю з веб-сторінки немає взагалі, тож кнопка там не
-показується — неактивна кнопка лише збивала б.
+Over Web Serial, which means Chromium-based browsers only. Firefox and
+Safari have no access to the cable from a web page at all, so the button
+isn't shown there — an inactive button would just be confusing.
 
-Прошивка має два режими, і обидва вмикаються **на самій Лілці** в меню
-«Розробка»:
+The firmware has two modes, and both are switched on **on the Lilka itself**,
+in the "Development" menu:
 
-**Live Lua** — Лілка чекає, комп'ютер надсилає текст програми, мовчання довше
-за `SERIAL_DELAY` (1000 мс) означає «код закінчився». Ніякого протоколу, просто
-текст на 115200 бод.
+**Live Lua** — Lilka waits, the computer sends the program's text, and
+silence longer than `SERIAL_DELAY` (1000 ms) means "the code has ended." No
+protocol, just text at 115200 baud.
 
-**REPL** — приймає по рядку й повертає те, що програма надрукувала через
-`print`. Вираз сам по собі нічого не поверне.
+**REPL** — accepts a line at a time and returns whatever the program printed
+via `print`. An expression on its own returns nothing.
 
-Обидва режими надсилають **лише код**. Програма з `require` або
-`load_image` потребує файлів на самій картці — про це попереджаємо до запуску,
-а не після незрозумілої помилки на пристрої.
+Both modes send **only code**. A program using `require` or `load_image`
+needs the files to already be on the card — we warn about that before
+running, rather than after a confusing error on the device.
 
-## Як це перевіряється
+## How this is checked
 
-**124 автоматичні перевірки**, `npm run check`:
+**124 automated checks**, `npm run check`:
 
-| Набір | Що перевіряє |
+| Suite | What it checks |
 |---|---|
-| `check-primitives` | геометрія: симетрія кола, відсікання, `color565` |
-| `check-fonts` | шрифти проти незалежних величин заголовка |
-| `check-images` | растр, перетворення, подвійна буферизація |
-| `check-vfs` | файлова система і квірки завантажувача BMP |
-| `check-widgets` | віджети: розкладка клавіатури, геометрія вікон |
-| `check-completions` | автодоповнення редактора проти `lilka-api.json` |
-| `check-runtime` | рантайм Lua під Node |
+| `check-primitives` | geometry: circle symmetry, clipping, `color565` |
+| `check-fonts` | fonts against independently derived header values |
+| `check-images` | raster, transforms, double buffering |
+| `check-vfs` | file system and the BMP loader's quirks |
+| `check-widgets` | widgets: keyboard layout, window geometry |
+| `check-completions` | editor autocompletion against `lilka-api.json` |
+| `check-runtime` | Lua runtime under Node |
 
-Усе це — під Node, без браузера. Чи працює саме те, що бачить людина
-(вкладки, кнопки «Запустити»/«Зупинити», вибір прикладу), перевіряє окремо
-`npm run test:e2e` — Playwright під headless Chromium, `e2e/smoke.spec.ts`.
+All of this runs under Node, without a browser. Whether what a person
+actually sees works (tabs, the Run/Stop buttons, picking an example) is
+checked separately by `npm run test:e2e` — Playwright under headless
+Chromium, `e2e/smoke.spec.ts`.
 
-Обидва набори підключені в CI. `deploy.yml` жене `typecheck` і `check` перед
-кожною публікацією на push у `main`. `ci.yml` додає до цього `test:e2e` і
-`build` — на кожен pull request і на кожен push у `main`. Для PR це єдина
-автоматична перевірка, яку код бачить до злиття, бо `deploy.yml` на pull
-request не реагує.
+Both suites are wired into CI. `deploy.yml` runs `typecheck` and `check`
+before every publish on push to `main`. `ci.yml` adds `test:e2e` and `build`
+on top of that — on every pull request and every push to `main`. For a PR,
+that's the only automated check the code sees before merging, since
+`deploy.yml` doesn't react to pull requests.
 
-Головний принцип перевірок під Node: порівнювати з **незалежно порахованими**
-числами, а не з власним виводом. Приклади:
+The main principle for the Node-side checks: compare against
+**independently computed** numbers, not against the code's own output.
+Examples:
 
-- шрифти: `delta_x` літери «A» з бітпотоку проти ширини клітини з назви шрифту;
-  висота «A» проти `ascent_A` з байта 13 заголовка. Це різні поля, і якщо
-  бітпотік читається зі зсувом, вони розійдуться
-- BMP: очікувані значення пікселів пораховані окремим скриптом прямо з байтів
-  файлу
-- форма літери «A» у 6x13 звірена зі зразком X11, відомим поза цим форматом
+- fonts: the letter "A"'s `delta_x` from the bitstream, against the cell
+  width from the font's name; the height of "A" against `ascent_A` from byte
+  13 of the header. These are different fields, and if the bitstream is read
+  with an offset, they'll disagree
+- BMP: expected pixel values are computed by a separate script, directly from
+  the file's bytes
+- the shape of the letter "A" in 6x13 is checked against an X11 sample known
+  outside this format
 
-Плюс справжні програми: «Кубики», «Повтори комбінацію» і офіційний
-`examples/LUA/cat` вбудовані як приклади. Якщо котрийсь перестане запускатися —
-це помилка емулятора, а не приклада.
-
----
-
-## Покриття API
-
-```
-111 зі 174 функцій (64%)
-у межах задуманого: 107 зі 108 (99%)
-```
-
-Різниця між 174 і 108 — апаратні простори імен, яких у браузері не буде
-взагалі: `gpio`, `i2c`, `spi`, `pwm`, `wifi`, `mqtt`, `net`, `serial`, `ws2812`.
-
-Число не оцінне: `gen-coverage.mts` запускає справжній рантайм, знімає перелік
-прив'язок і звіряє зі специфікацією, знятою з анотацій прошивки.
-
-Лишилося `audio.play` — відтворення звукових файлів.
+Plus real programs: "Dice", "Repeat the pattern", and the official
+`examples/LUA/cat` are bundled as examples. If any of them stops running,
+that's a bug in the emulator, not in the example.
 
 ---
 
-## Розміри збірки
+## API coverage
 
 ```
-головний бандл       ~22 КБ gzip
-шрифти               9 чанків по 2–5 КБ, на вимогу
-glue.wasm (Lua)      265 КБ, окремим файлом
-приклад «Кіт»        4 BMP по 269 КБ, на вимогу
+111 of 174 functions (64%)
+within scope: 107 of 108 (99%)
 ```
 
-Приклади з файлами навмисно не потрапляють у головний бандл.
+The gap between 174 and 108 is hardware namespaces that will never exist in a
+browser: `gpio`, `i2c`, `spi`, `pwm`, `wifi`, `mqtt`, `net`, `serial`,
+`ws2812`.
+
+The number isn't a guess: `gen-coverage.mts` runs the real runtime, captures
+the list of bindings, and checks it against the spec extracted from the
+firmware's annotations.
+
+Missing: `audio.play` — playing audio files.
+
+---
+
+## Build sizes
+
+```
+main bundle          ~22 KB gzip
+fonts                 9 chunks of 2–5 KB, on demand
+glue.wasm (Lua)      265 KB, a separate file
+"Cat" example         4 BMPs of 269 KB each, on demand
+```
+
+Examples with files deliberately don't end up in the main bundle.

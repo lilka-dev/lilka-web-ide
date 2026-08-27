@@ -15,10 +15,12 @@ import catRight from './cat/right.bmp?url';
 import circle from './circle.lua?raw';
 import simon from './simon.lua?raw';
 import snake from './snake/snake.lua?raw';
+import type { Key } from '../i18n/strings.ts';
 
 export interface Example {
     id: string;
-    title: string;
+    /** Назва — рядок словника, а не текст: показується в обох мовах середовища. */
+    titleKey: Key;
     code: string;
     /**
      * Ім'я головного файлу.
@@ -56,13 +58,13 @@ export function exampleAssets(example: Example): Record<string, string> {
 }
 
 export const EXAMPLES: Example[] = [
-    { id: 'circle', title: 'Коло та кнопки', code: circle, file: 'circle.lua' },
-    { id: 'dice', title: 'Гра «Кубики»', code: dice, file: 'dice.lua' },
-    { id: 'simon', title: 'Повтори комбінацію', code: simon, file: 'repeat.lua' },
-    { id: 'snake', title: 'Змійка', code: snake, file: 'snake.lua' },
+    { id: 'circle', titleKey: 'example.circle', code: circle, file: 'circle.lua' },
+    { id: 'dice', titleKey: 'example.dice', code: dice, file: 'dice.lua' },
+    { id: 'simon', titleKey: 'example.simon', code: simon, file: 'repeat.lua' },
+    { id: 'snake', titleKey: 'example.snake', code: snake, file: 'snake.lua' },
     {
         id: 'asteroids',
-        title: 'Астероїди',
+        titleKey: 'example.asteroids',
         code: asteroidsCode,
         file: 'asteroids.lua',
         dir: '/sd/Examples/asteroids',
@@ -76,7 +78,7 @@ export const EXAMPLES: Example[] = [
     },
     {
         id: 'cat',
-        title: 'Кіт (із картинками)',
+        titleKey: 'example.cat',
         code: catCode,
         file: 'cat.lua',
         dir: '/sd/Examples/cat',

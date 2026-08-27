@@ -9,6 +9,9 @@
  * саме з `print`, щоб звичка склалася правильна.
  */
 
+import { t, bindText, bindTitle, bindPlaceholder, onLangChange } from '../i18n/index.ts';
+
+
 /** Готові приклади для порожнього екрана. Перший показує сам принцип. */
 const HINTS = [
     'print(3 + 4)',
@@ -22,11 +25,11 @@ const HINTS = [
  * Без підпису після них не було б жодної відповіді, і здавалося б, що не
  * спрацювало.
  */
-const SILENT_HINTS: Array<[RegExp, string]> = [
-    [/^display\.fill_screen/, 'екран Лілки залито кольором'],
-    [/^display\./, 'намальовано на екрані Лілки'],
-    [/^buzzer\./, 'звук на Лілці'],
-    [/^util\.sleep/, 'пауза'],
+const SILENT_HINTS: Array<[RegExp, () => string]> = [
+    [/^display\.fill_screen/, () => t('console.silentFillScreen')],
+    [/^display\./, () => t('console.silentDisplay')],
+    [/^buzzer\./, () => t('console.silentBuzzer')],
+    [/^util\.sleep/, () => t('console.silentSleep')],
 ];
 
 export interface ConsolePanel {
@@ -49,7 +52,7 @@ export function createConsolePanel(): ConsolePanel {
 
     const title = document.createElement('span');
     title.className = 'repl__title';
-    title.textContent = 'Спробувати команду';
+    bindText(title, 'console.title');
 
     const badge = document.createElement('span');
     badge.className = 'repl__badge';
@@ -58,13 +61,13 @@ export function createConsolePanel(): ConsolePanel {
     clear.type = 'button';
     clear.className = 'repl__icon';
     clear.textContent = '⌫';
-    clear.title = 'Очистити';
+    bindTitle(clear, 'console.clear');
 
     const close = document.createElement('button');
     close.type = 'button';
     close.className = 'repl__icon';
     close.textContent = '×';
-    close.title = 'Закрити';
+    bindTitle(close, 'console.close');
 
     head.append(title, badge, clear, close);
 
@@ -83,18 +86,19 @@ export function createConsolePanel(): ConsolePanel {
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'repl__input';
-    input.placeholder = 'команда для Лілки…';
+    bindPlaceholder(input, 'console.placeholder');
     input.spellcheck = false;
 
     const tip = document.createElement('span');
     tip.className = 'repl__tip';
-    tip.textContent = 'Enter — виконати';
+    bindText(tip, 'console.tip');
 
     inputRow.append(caret, input, tip);
     root.append(head, log, inputRow);
 
     let commandHandler: (line: string) => void = () => {};
     let closeHandler: () => void = () => {};
+    let lastState: 'ready' | 'silent' = 'silent';
 
     /** Історія команд: стрілки повертають попередні. */
     const history: string[] = [];
@@ -109,10 +113,14 @@ export function createConsolePanel(): ConsolePanel {
         return element;
     }
 
+    /** Чи зараз у логу лише вступні підказки — щоб знати, чи можна їх оновити. */
+    let showingHints = false;
+
     function showHints(): void {
+        showingHints = true;
         log.textContent = '';
-        line('repl__note', 'Пишіть по одному рядку — Лілка виконає його одразу.');
-        line('repl__note repl__note--dim', 'Спробуйте:');
+        line('repl__note', t('console.hint1'));
+        line('repl__note repl__note--dim', t('console.hint2'));
 
         const row = document.createElement('div');
         row.className = 'repl__hints';
@@ -134,6 +142,7 @@ export function createConsolePanel(): ConsolePanel {
         const text = input.value.trim();
         if (!text) return;
 
+        showingHints = false;
         line('repl__command', '› ' + text);
         history.push(text);
         historyAt = history.length;
@@ -142,7 +151,7 @@ export function createConsolePanel(): ConsolePanel {
         // Команда без `print` нічого не поверне — підписуємо, що вона зробила
         if (!text.includes('print')) {
             const hint = SILENT_HINTS.find(([pattern]) => pattern.test(text));
-            if (hint) line('repl__silent', hint[1]);
+            if (hint) line('repl__silent', hint[1]());
         }
 
         commandHandler(text);
@@ -166,10 +175,47 @@ export function createConsolePanel(): ConsolePanel {
         }
     });
 
+    /**
+     * Стан «мовчить» — найважливіший.
+     *
+     * Консоль працює лише коли на самій Лілці відкрито «Розробка → Lua
+     * REPL». Це неочевидно, і без підказки людина сиділа б і не розуміла,
+     * чому нічого не відбувається.
+     */
+    let stateApplied = false;
+    function applyState(state: 'ready' | 'silent'): void {
+        stateApplied = true;
+        lastState = state;
+        const ready = state === 'ready';
+        badge.textContent = t(ready ? 'console.ready' : 'console.silent');
+        badge.className = ready ? 'repl__badge repl__badge--ready' : 'repl__badge repl__badge--silent';
+        input.disabled = !ready;
+        inputRow.classList.toggle('repl__input-row--off', !ready);
+
+        const existing = root.querySelector('.repl__warning');
+        existing?.remove();
+
+        if (!ready) {
+            const warning = document.createElement('div');
+            warning.className = 'repl__warning';
+            warning.innerHTML =
+                t('console.warning') + `<div class="repl__warning-note">${t('console.warningNote')}</div>`;
+            log.after(warning);
+        }
+    }
+
     clear.addEventListener('click', showHints);
     close.addEventListener('click', () => closeHandler());
 
     showHints();
+
+    // Статичні заголовки прив'язані через bindText/bindTitle вище; це —
+    // динамічний вміст, який inline-виклики `t()` не оновлюють самі, бо
+    // перемальовується не щоразу, а лише за подією (клік, відповідь Лілки)
+    onLangChange(() => {
+        if (showingHints) showHints();
+        if (stateApplied) applyState(lastState);
+    });
 
     return {
         root,
@@ -177,38 +223,13 @@ export function createConsolePanel(): ConsolePanel {
         addOutput(text) {
             const trimmed = text.trimEnd();
             if (!trimmed) return;
+            showingHints = false;
             // Помилки Lua впізнаються за характерними словами
             const isError = /error|attempt to|nil value|near '/.test(trimmed);
             line(isError ? 'repl__error' : 'repl__output', trimmed);
         },
 
-        /**
-         * Стан «мовчить» — найважливіший.
-         *
-         * Консоль працює лише коли на самій Лілці відкрито «Розробка → Lua
-         * REPL». Це неочевидно, і без підказки людина сиділа б і не розуміла,
-         * чому нічого не відбувається.
-         */
-        setState(state) {
-            const ready = state === 'ready';
-            badge.textContent = ready ? 'Лілка на звʼязку' : 'Лілка мовчить';
-            badge.className = ready ? 'repl__badge repl__badge--ready' : 'repl__badge repl__badge--silent';
-            input.disabled = !ready;
-            inputRow.classList.toggle('repl__input-row--off', !ready);
-
-            const existing = root.querySelector('.repl__warning');
-            existing?.remove();
-
-            if (!ready) {
-                const warning = document.createElement('div');
-                warning.className = 'repl__warning';
-                warning.innerHTML =
-                    'Схоже, Лілка зараз не чекає команд. На самій Лілці відкрийте ' +
-                    '<strong>Розробка → Lua REPL</strong> — і поверніться сюди.' +
-                    '<div class="repl__warning-note">Вийти з цього режиму на Лілці — кнопкою A.</div>';
-                log.after(warning);
-            }
-        },
+        setState: applyState,
 
         onCommand: (handler) => {
             commandHandler = handler;

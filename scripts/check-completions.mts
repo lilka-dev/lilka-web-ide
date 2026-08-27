@@ -69,6 +69,12 @@ ok(missing.length === 0, `усі реалізовані функції мают�
 const withInfo = COMPLETIONS.filter((item) => item.info.length > 0);
 ok(withInfo.length > 100, `українські описи на місці: ${withInfo.length} із ${COMPLETIONS.length}`);
 
+// 6b. Кожен український опис має пару в completions-i18n-en.mjs. Порожній
+//     infoEn при непорожньому info означає забутий переклад — див.
+//     попередження gen-completions.mjs при генерації.
+const missingEn = COMPLETIONS.filter((item) => item.info.length > 0 && item.infoEn.length === 0);
+ok(missingEn.length === 0, `англійські описи на місці: бракує для ${missingEn.map((i) => i.label).join(', ')}`);
+
 // 7. Функції вставляються з дужкою, щоб не дописувати руками
 const fn = COMPLETIONS.find((item) => item.label === 'display.fill_screen');
 ok(fn?.apply?.endsWith('(') === true, `функція вставляється з дужкою: ${fn?.apply}`);

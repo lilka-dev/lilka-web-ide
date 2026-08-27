@@ -17,6 +17,10 @@ export default defineConfig({
     use: {
         baseURL: `http://localhost:${PORT}`,
         trace: 'retain-on-failure',
+        // Мова інтерфейсу визначається з navigator.language (src/i18n/lang.ts).
+        // Без явного локалю тести залежали б від локалі машини, на якій
+        // запускаються, — тут завжди англійська, як і типова мова середовища.
+        locale: 'en-US',
     },
     projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
     /**

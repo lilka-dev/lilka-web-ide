@@ -8,6 +8,7 @@
 
 import { EXAMPLES } from '../examples/index.ts';
 import type { CodeEditor } from './code-editor.ts';
+import { t, bindText, bindTitle, getLang, setLang, onLangChange } from '../i18n/index.ts';
 
 export interface EditorPanel {
     root: HTMLElement;
@@ -77,30 +78,35 @@ export function createEditor(initialCode: string): EditorPanel {
     const runButton = document.createElement('button');
     runButton.type = 'button';
     runButton.className = 'button button--primary';
-    runButton.textContent = '▶ Запустити';
+    bindText(runButton, 'editor.run');
 
     /** З'являється лише при підключеній Лілці — інакше лише збивала б. */
     const deviceRunButton = document.createElement('button');
     deviceRunButton.type = 'button';
     deviceRunButton.className = 'button button--device';
-    deviceRunButton.textContent = 'На пристрої';
+    bindText(deviceRunButton, 'editor.runOnDevice');
     deviceRunButton.hidden = true;
 
     const stopButton = document.createElement('button');
     stopButton.type = 'button';
     stopButton.className = 'button';
-    stopButton.textContent = '■ Зупинити';
+    bindText(stopButton, 'editor.stop');
     stopButton.disabled = true;
 
     // Приклади — справжні програми для заліза, а не спрощені демонстрації
     const picker = document.createElement('select');
     picker.className = 'editor__picker';
-    for (const example of EXAMPLES) {
+    const exampleOptions = EXAMPLES.map((example) => {
         const option = document.createElement('option');
         option.value = example.id;
-        option.textContent = example.title;
         picker.append(option);
-    }
+        return { option, titleKey: example.titleKey };
+    });
+    const drawExampleOptions = () => {
+        for (const { option, titleKey } of exampleOptions) option.textContent = t(titleKey);
+    };
+    drawExampleOptions();
+    onLangChange(drawExampleOptions);
     let exampleHandler: (example: (typeof EXAMPLES)[number]) => void = () => {};
     picker.addEventListener('change', () => {
         const example = EXAMPLES.find((e) => e.id === picker.value);
@@ -122,7 +128,40 @@ export function createEditor(initialCode: string): EditorPanel {
     const deviceSlot = document.createElement('span');
     deviceSlot.className = 'editor__device';
 
-    bar.append(runButton, deviceRunButton, stopButton, picker, status, deviceSlot);
+    /**
+     * Перемикач мови інтерфейсу.
+     *
+     * Показує обидва варіанти власними назвами, а не в поточній мові — так
+     * людина знаходить рідну мову, навіть не розуміючи ту, що зараз активна.
+     * Стан лише в пам'яті (див. `src/i18n/lang.ts`): нова вкладка знову
+     * визначить мову з браузера.
+     */
+    const langToggle = document.createElement('div');
+    langToggle.className = 'editor__lang';
+    bindTitle(langToggle, 'editor.langTitle');
+    const enButton = document.createElement('button');
+    enButton.type = 'button';
+    enButton.className = 'editor__lang-btn';
+    enButton.textContent = 'EN';
+    const ukButton = document.createElement('button');
+    ukButton.type = 'button';
+    ukButton.className = 'editor__lang-btn';
+    ukButton.textContent = 'УКР';
+    for (const [button, lang] of [
+        [enButton, 'en'],
+        [ukButton, 'uk'],
+    ] as const) {
+        button.addEventListener('click', () => setLang(lang));
+    }
+    const syncLangButtons = () => {
+        enButton.classList.toggle('editor__lang-btn--on', getLang() === 'en');
+        ukButton.classList.toggle('editor__lang-btn--on', getLang() === 'uk');
+    };
+    syncLangButtons();
+    onLangChange(syncLangButtons);
+    langToggle.append(enButton, ukButton);
+
+    bar.append(runButton, deviceRunButton, stopButton, picker, status, langToggle, deviceSlot);
 
     /*
      * Рядок із назвою файлу.
@@ -137,6 +176,13 @@ export function createEditor(initialCode: string): EditorPanel {
     const fileName = document.createElement('span');
     fileName.className = 'editor__file-name';
 
+    /** Шлях показується без технічного префікса `/sd`, зі стрілками. */
+    let currentPath = '';
+    function drawFileName(): void {
+        fileName.textContent = currentPath.replace(/^\/sd\/?/, t('editor.filesPrefix')).replace(/\//g, ' › ');
+    }
+    onLangChange(drawFileName);
+
     const saveState = document.createElement('span');
     saveState.className = 'editor__save';
 
@@ -146,7 +192,7 @@ export function createEditor(initialCode: string): EditorPanel {
     let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
     function setSaved(): void {
-        saveState.textContent = 'збережено';
+        saveState.textContent = t('editor.saved');
         saveState.classList.remove('editor__save--pending');
     }
 
@@ -160,7 +206,7 @@ export function createEditor(initialCode: string): EditorPanel {
      * Затримка потрібна, щоб не писати у сховище на кожну натиснуту клавішу.
      */
     function scheduleSave(): void {
-        saveState.textContent = 'збереження…';
+        saveState.textContent = t('editor.saving');
         saveState.classList.add('editor__save--pending');
         if (saveTimer) clearTimeout(saveTimer);
         saveTimer = setTimeout(() => {
@@ -212,7 +258,7 @@ export function createEditor(initialCode: string): EditorPanel {
             const at = /:(\d+):/.exec(text);
             if (kind === 'err' && at) {
                 line.classList.add('line--clickable');
-                line.title = `Перейти до рядка ${at[1]}`;
+                line.title = t('editor.goToLine', { n: at[1] });
                 line.addEventListener('click', () => code?.goToLine(Number(at[1])));
             }
 
@@ -236,8 +282,8 @@ export function createEditor(initialCode: string): EditorPanel {
             saveHandler = handler;
         },
         setFile: (path) => {
-            // Шлях показується без технічного префікса `/sd`, зі стрілками
-            fileName.textContent = path.replace(/^\/sd\/?/, 'Файли › ').replace(/\//g, ' › ');
+            currentPath = path;
+            drawFileName();
             setSaved();
         },
         flush: saveNow,

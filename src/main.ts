@@ -30,6 +30,7 @@ import { basename, dirname } from './emulator/vfs.ts';
 import { LuaHost } from './runtime/host.ts';
 import { loadAllFontJson } from './emulator/fonts.ts';
 import type { FontJson } from './emulator/font.ts';
+import { t, onLangChange, type Key } from './i18n/index.ts';
 
 const board = getBoard();
 
@@ -145,7 +146,7 @@ async function downloadPath(path: string): Promise<void> {
     }
 
     if (Object.keys(entries).length === 0) {
-        editor.print(`Тека «${basename(path)}» порожня — пакувати нічого.`, 'err');
+        editor.print(t('files.downloadEmptyFolder', { name: basename(path) }), 'err');
         return;
     }
 
@@ -177,20 +178,32 @@ const files = createFilesPanel({
 });
 deviceColumn.append(files.root);
 
+/**
+ * Мітка стану оновлюється і на подію рантайму, і на зміну мови.
+ *
+ * Стан «готово» — найдовший за часом: без підписки на мову напис лишався б у
+ * старій мові, доки Lua не перейде в інший стан.
+ */
+const HOST_STATE_KEY: Record<string, Key> = {
+    idle: 'host.idle',
+    loading: 'host.loading',
+    ready: 'host.ready',
+    running: 'host.running',
+    stopping: 'host.stopping',
+};
+let lastHostState = 'idle';
+function drawHostState(state: string): void {
+    lastHostState = state;
+    const key = HOST_STATE_KEY[state];
+    editor.setState(key ? t(key) : state, state === 'running' || state === 'stopping');
+}
+onLangChange(() => drawHostState(lastHostState));
+
 const host = new LuaHost(board, DEFAULT_FONT, {
     onPrint: (text) => editor.print(text),
     onError: (message) => editor.print(message, 'err'),
     onFilesChange: () => refreshFiles(),
-    onStateChange: (state) => {
-        const labels: Record<string, string> = {
-            idle: 'запуск середовища…',
-            loading: 'завантаження Lua…',
-            ready: 'готово',
-            running: 'виконується',
-            stopping: 'зупинка…',
-        };
-        editor.setState(labels[state] ?? state, state === 'running' || state === 'stopping');
-    },
+    onStateChange: drawHostState,
 });
 
 /**
@@ -255,13 +268,13 @@ const device = new LilkaDevice({
     onConnect: () => {
         editor.setDeviceReady(true);
         drawDeviceButton();
-        editor.print('Лілку під\'єднано.');
+        editor.print(t('device.connected'));
     },
     onDisconnect: () => {
         editor.setDeviceReady(false);
         closeConsole();
         drawDeviceButton();
-        editor.print('Лілку від\'єднано.');
+        editor.print(t('device.disconnected'));
     },
     onError: (message) => editor.print(message, 'err'),
 });
@@ -274,8 +287,8 @@ function drawDeviceButton(): void {
     if (!isSerialSupported()) {
         const note = document.createElement('span');
         note.className = 'editor__device-note';
-        note.textContent = 'підключення до Лілки — у Chrome';
-        note.title = 'Доступ до USB із веб-сторінки є лише в Chrome і Edge';
+        note.textContent = t('device.chromeOnly');
+        note.title = t('device.chromeOnlyTitle');
         slot.append(note);
         return;
     }
@@ -285,15 +298,16 @@ function drawDeviceButton(): void {
 
     if (!device.connected) {
         button.className = 'device-chip';
-        button.textContent = 'Під\'єднати Лілку';
+        button.textContent = t('device.connect');
         button.addEventListener('click', () => void device.connect());
     } else {
         button.className = 'device-chip device-chip--on';
-        button.innerHTML = '<span class="device-chip__dot"></span>Лілка · USB ▾';
+        button.innerHTML = `<span class="device-chip__dot"></span>${t('device.connectedLabel')}`;
         button.addEventListener('click', () => (consoleOpen ? closeConsole() : openConsole()));
     }
     slot.append(button);
 }
+onLangChange(drawDeviceButton);
 
 function openConsole(): void {
     consoleOpen = true;
@@ -319,19 +333,14 @@ editor.onRunOnDevice(() => {
 
     // Попередження ДО запуску: через кабель їде лише код
     if (/require\s*\(|load_image\s*\(|load_audio\s*\(/.test(code)) {
-        const proceed = confirm(
-            'Через кабель їде лише код.\n\n' +
-                'Ця програма використовує файли — картинки, звуки або модулі. ' +
-                'Вони мають уже лежати на картці пам\'яті Лілки, інакше програма впаде.\n\n' +
-                'Запустити все одно?',
-        );
+        const proceed = confirm(t('device.runConfirm'));
         if (!proceed) return;
     }
 
-    editor.print('Надсилаю код на Лілку…');
+    editor.print(t('device.sending'));
     void device
         .runProgram(code)
-        .then(() => editor.print('Код надіслано. На Лілці має відкритися «Розробка → Lua Live».'))
+        .then(() => editor.print(t('device.sent')))
         .catch((error) => editor.print(String(error), 'err'));
 });
 
@@ -361,7 +370,7 @@ async function runEditorCode(): Promise<void> {
     await host.addFile(path, new TextEncoder().encode(code));
 
     if (!host.run(code, 'main.lua', path)) {
-        editor.setState('Lua не готова', false);
+        editor.setState(t('host.notReady'), false);
     }
 }
 editor.onStop(() => host.stop());
@@ -421,7 +430,7 @@ function showFailure(message: string): void {
     text.setTextColor(color565(255, 210, 80));
     text.setTextBound(10, 10, fb.width - 20, fb.height - 20);
     text.setCursor(10, 30);
-    text.write('Lua не запустилася');
+    text.write(t('host.failedToStart'));
 
     text.setTextColor(color565(200, 210, 220));
     text.setCursor(10, 58);
@@ -458,9 +467,13 @@ function frame(now: number): void {
         frames = 0;
         fpsWindow = 0;
         hud.textContent = luaRunning
-            ? `${fps} к/с виводу · кадр Lua ${host.frame} · пропущено ${host.skippedFrames} · ` +
-              `масштаб ${screen.currentScale}×`
-            : `масштаб ${screen.currentScale}×`;
+            ? t('hud.stats', {
+                  fps,
+                  frame: host.frame,
+                  skipped: host.skippedFrames,
+                  scale: screen.currentScale,
+              })
+            : t('hud.scaleOnly', { scale: screen.currentScale });
     }
     shell.syncButtons();
 
@@ -507,7 +520,7 @@ void (async () => {
         // інакше заставка виглядає як зависання, і причина лишається невідомою
         const message = error instanceof Error ? error.message : String(error);
         editor.print(message, 'err');
-        editor.setState('Lua не запустилася', false);
+        editor.setState(t('host.failedToStart'), false);
         showFailure(message);
     }
 })();

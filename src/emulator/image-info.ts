@@ -28,13 +28,6 @@ export interface ImageInfo {
     fixable: boolean;
 }
 
-export const PROBLEM_TEXT: Record<ImageProblem, string> = {
-    'too-large': 'більша за 1024 пікселі — Лілка її не завантажить',
-    'top-down': 'збережена догори низом — Лілка її не завантажить',
-    'alpha-lost': 'прозоре тло зникне, бо BMP її не зберігає',
-    'row-padding': 'зображення поїде по діагоналі через ширину, не кратну 4',
-};
-
 const dword = (b: Uint8Array, at: number) => (b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (b[at + 3] << 24)) >>> 0;
 const sdword = (b: Uint8Array, at: number) => b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (b[at + 3] << 24);
 const word = (b: Uint8Array, at: number) => b[at] | (b[at + 1] << 8);

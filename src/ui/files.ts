@@ -15,12 +15,17 @@
 
 import { basename, dirname, normalizePath } from '../emulator/vfs.ts';
 import { detectFormat } from '../emulator/image-loader.ts';
-import { inspectImage, PROBLEM_TEXT, type ImageInfo } from '../emulator/image-info.ts';
+import { inspectImage, type ImageInfo, type ImageProblem } from '../emulator/image-info.ts';
 import { fileIcon, iconElement } from './icons.ts';
+import { t, bindTitle, onLangChange, type Key } from '../i18n/index.ts';
 
 /** Корінь менеджера. У шляхах лишається `/sd`, бо так на залізі. */
 export const ROOT = '/sd';
-const ROOT_TITLE = 'Файли';
+
+/** Проблеми картинок мовно-нейтральні в `image-info.ts` — текст тут. */
+function problemText(problem: ImageProblem): string {
+    return t(`files.problem.${problem}` as Key);
+}
 
 export interface FileEntry {
     path: string;
@@ -50,9 +55,9 @@ export interface FilesPanel {
 }
 
 function humanSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} Б`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
-    return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
+    if (bytes < 1024) return `${bytes} ${t('files.unitByte')}`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} ${t('files.unitKB')}`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} ${t('files.unitMB')}`;
 }
 
 
@@ -102,12 +107,15 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
     uploadButton.type = 'button';
     uploadButton.className = 'button button--primary';
     uploadButton.append(iconElement('upload', 15));
-    uploadButton.append(document.createTextNode(' Завантажити'));
+    const uploadLabel = document.createTextNode('');
+    uploadButton.append(uploadLabel);
+    onLangChange(() => (uploadLabel.textContent = ` ${t('files.upload')}`));
+    uploadLabel.textContent = ` ${t('files.upload')}`;
     uploadButton.addEventListener('click', (event) => {
         event.stopPropagation();
         openMenu(uploadButton, [
-            { label: 'Файл…', run: () => picker.click() },
-            { label: 'Тека…', run: pickFolder },
+            { label: t('files.uploadFile'), run: () => picker.click() },
+            { label: t('files.uploadFolder'), run: pickFolder },
         ]);
     });
 
@@ -115,19 +123,24 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
     createButton.type = 'button';
     createButton.className = 'button';
     createButton.append(iconElement('plus', 15));
-    createButton.append(document.createTextNode(' Створити'));
+    const createLabel = document.createTextNode('');
+    createButton.append(createLabel);
+    onLangChange(() => (createLabel.textContent = ` ${t('files.create')}`));
+    createLabel.textContent = ` ${t('files.create')}`;
     createButton.addEventListener('click', (event) => {
         event.stopPropagation();
         openMenu(createButton, [
             {
-                label: 'Тека…',
+                label: t('files.createFolder'),
                 run: () =>
-                    askName('Нова тека', 'Назва теки', '', (name) => events.onMkdir(`${dir}/${name}`)),
+                    askName(t('files.createFolderTitle'), t('files.createFolderHint'), '', (name) =>
+                        events.onMkdir(`${dir}/${name}`),
+                    ),
             },
             {
-                label: 'Файл…',
+                label: t('files.createFile'),
                 run: () =>
-                    askName('Новий файл', 'Назва файлу з розширенням', 'new.lua', (name) =>
+                    askName(t('files.createFileTitle'), t('files.createFileHint'), 'new.lua', (name) =>
                         events.onAdd(`${dir}/${name}`, new Uint8Array(0)),
                     ),
             },
@@ -139,11 +152,11 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
     const gridButton = document.createElement('button');
     gridButton.type = 'button';
     gridButton.append(iconElement('grid', 15));
-    gridButton.title = 'Плитка';
+    bindTitle(gridButton, 'files.viewGrid');
     const listButton = document.createElement('button');
     listButton.type = 'button';
     listButton.append(iconElement('list', 15));
-    listButton.title = 'Рядки';
+    bindTitle(listButton, 'files.viewList');
     for (const [button, mode] of [
         [gridButton, 'grid'],
         [listButton, 'list'],
@@ -267,43 +280,43 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
 
         if (info?.fixable) {
             items.push({
-                label: 'Виправити для Лілки',
+                label: t('files.fix'),
                 kind: 'fix',
                 run: () => void fixImage(entry),
             });
         }
 
         if (entry.isDirectory) {
-            items.push({ label: 'Відкрити', kind: 'accent', run: () => setDir(entry.path) });
+            items.push({ label: t('files.open'), kind: 'accent', run: () => setDir(entry.path) });
         } else if (entry.name.endsWith('.lua')) {
-            items.push({ label: 'Відкрити в редакторі', kind: 'accent', run: () => events.onOpenLua(entry.path) });
+            items.push({ label: t('files.openInEditor'), kind: 'accent', run: () => events.onOpenLua(entry.path) });
         }
 
         items.push({
-            label: 'Перейменувати',
+            label: t('files.rename'),
             run: () =>
-                askName('Перейменувати', 'Нова назва', entry.name, (name) => {
+                askName(t('files.renameTitle'), t('files.renameHint'), entry.name, (name) => {
                     if (name === entry.name) return;
                     events.onMove(entry.path, `${dirname(entry.path)}/${name}`);
                 }),
         });
 
         if (!entry.isDirectory) {
-            items.push({ label: 'Дублювати', run: () => events.onDuplicate(entry.path) });
+            items.push({ label: t('files.duplicate'), run: () => events.onDuplicate(entry.path) });
         }
 
-        items.push({ label: 'Перемістити…', run: () => openMoveDialog([entry.path]) });
+        items.push({ label: t('files.moveEllipsis'), run: () => openMoveDialog([entry.path]) });
 
         items.push({
-            label: entry.isDirectory ? 'Завантажити архівом' : 'Завантажити',
+            label: entry.isDirectory ? t('files.downloadArchive') : t('files.download'),
             run: () => events.onDownload(entry.path),
         });
 
         items.push({
-            label: 'Видалити',
+            label: t('files.delete'),
             kind: 'danger',
             run: () => {
-                if (entry.isDirectory && !confirm(`Видалити теку «${entry.name}» з усім вмістом?`)) return;
+                if (entry.isDirectory && !confirm(t('files.confirmDeleteFolder', { name: entry.name }))) return;
                 events.onRemove(entry.path);
             },
         });
@@ -318,9 +331,9 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
             const fixed = await convertToPng(entry.name, entry.data);
             events.onAdd(`${dirname(entry.path)}/${fixed.name}`, fixed.data);
             if (fixed.name !== entry.name) events.onRemove(entry.path);
-            showNotice(`«${entry.name}» перезбережено як «${fixed.name}» — тепер Лілка прочитає її правильно.`, 'warn');
+            showNotice(t('files.fixedTo', { from: entry.name, to: fixed.name }), 'warn');
         } catch (error) {
-            showNotice(`Не вдалося виправити «${entry.name}»: ${String(error)}`, 'error');
+            showNotice(t('files.fixFailed', { name: entry.name, error: String(error) }), 'error');
         }
     }
 
@@ -356,13 +369,13 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
         const cancel = document.createElement('button');
         cancel.type = 'button';
         cancel.className = 'button';
-        cancel.textContent = 'Скасувати';
+        cancel.textContent = t('files.cancel');
         cancel.addEventListener('click', () => overlay.remove());
 
         const confirmButton = document.createElement('button');
         confirmButton.type = 'button';
         confirmButton.className = 'button button--primary';
-        confirmButton.textContent = 'Готово';
+        confirmButton.textContent = t('files.done');
 
         const submit = () => {
             const name = input.value.trim();
@@ -401,11 +414,13 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
         const title = document.createElement('div');
         title.className = 'dialog__title';
         title.textContent =
-            paths.length === 1 ? `Перемістити «${basename(paths[0])}»` : `Перемістити ${paths.length} об'єктів`;
+            paths.length === 1
+                ? t('files.moveOne', { name: basename(paths[0]) })
+                : t('files.moveMany', { n: paths.length });
 
         const hint = document.createElement('div');
         hint.className = 'dialog__hint';
-        hint.textContent = 'Оберіть, куди покласти';
+        hint.textContent = t('files.moveHint');
 
         const list = document.createElement('div');
         list.className = 'dialog__list';
@@ -414,7 +429,7 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
         const moveButton = document.createElement('button');
         moveButton.type = 'button';
         moveButton.className = 'button button--primary';
-        moveButton.textContent = 'Перемістити';
+        moveButton.textContent = t('files.move');
         moveButton.disabled = true;
 
         const candidates = [ROOT, ...getDirs()];
@@ -425,7 +440,7 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
             row.style.paddingLeft = `${14 + (candidate.split('/').length - 2) * 18}px`;
 
             const label = document.createElement('span');
-            label.textContent = candidate === ROOT ? ROOT_TITLE : basename(candidate);
+            label.textContent = candidate === ROOT ? t('files.root') : basename(candidate);
             row.append(label);
 
             // Тека не може переїхати сама в себе — інакше зникне з дерева
@@ -435,7 +450,7 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
             if (insideMoved || isCurrent) {
                 row.disabled = true;
                 const note = document.createElement('em');
-                note.textContent = insideMoved ? 'переміщується' : 'тут зараз';
+                note.textContent = insideMoved ? t('files.movingNote') : t('files.hereNote');
                 row.append(note);
             } else {
                 row.addEventListener('click', () => {
@@ -455,7 +470,7 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
         const cancel = document.createElement('button');
         cancel.type = 'button';
         cancel.className = 'button';
-        cancel.textContent = 'Скасувати';
+        cancel.textContent = t('files.cancel');
         cancel.addEventListener('click', () => overlay.remove());
         moveButton.addEventListener('click', () => {
             if (!target) return;
@@ -487,7 +502,7 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
         if (selection.size > 0) {
             crumbs.classList.add('files__crumbs--selection');
             const count = document.createElement('span');
-            count.textContent = `обрано ${selection.size}`;
+            count.textContent = t('files.selected', { n: selection.size });
             crumbs.append(count);
 
             const actions = document.createElement('span');
@@ -495,13 +510,13 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
 
             const move = document.createElement('button');
             move.type = 'button';
-            move.textContent = 'Перемістити';
+            move.textContent = t('files.move');
             move.addEventListener('click', () => openMoveDialog([...selection]));
 
             const remove = document.createElement('button');
             remove.type = 'button';
             remove.className = 'files__danger';
-            remove.textContent = 'Видалити';
+            remove.textContent = t('files.delete');
             remove.addEventListener('click', () => {
                 for (const path of selection) events.onRemove(path);
                 selection.clear();
@@ -510,7 +525,7 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
             const cancel = document.createElement('button');
             cancel.type = 'button';
             cancel.className = 'files__plain';
-            cancel.textContent = 'Скасувати';
+            cancel.textContent = t('files.cancel');
             cancel.addEventListener('click', () => {
                 selection.clear();
                 draw();
@@ -542,7 +557,7 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
             crumbs.append(crumb);
         };
 
-        makeCrumb(ROOT_TITLE, ROOT, parts.length === 0);
+        makeCrumb(t('files.root'), ROOT, parts.length === 0);
         let path = ROOT;
         parts.forEach((part, index) => {
             path += '/' + part;
@@ -556,7 +571,13 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
         const total = entries.reduce((sum, entry) => sum + entry.size, 0);
         const summary = document.createElement('span');
         summary.className = 'files__summary';
-        summary.textContent = entries.length === 0 ? 'порожньо' : `${entries.length} об'єктів · ${humanSize(total)}`;
+        summary.textContent =
+            entries.length === 0
+                ? t('files.empty')
+                : t(entries.length === 1 ? 'files.summaryOne' : 'files.summaryMany', {
+                      n: entries.length,
+                      size: humanSize(total),
+                  });
         crumbs.append(summary);
     }
 
@@ -565,7 +586,7 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
         box.type = 'button';
         box.className = selection.has(entry.path) ? 'pick pick--on' : 'pick';
         box.textContent = selection.has(entry.path) ? '✓' : '';
-        box.title = 'Обрати';
+        box.title = t('files.select');
         box.addEventListener('click', (event) => {
             event.stopPropagation();
             if (selection.has(entry.path)) selection.delete(entry.path);
@@ -580,7 +601,7 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
         dots.type = 'button';
         dots.className = 'dots';
         dots.textContent = '⋯';
-        dots.title = 'Дії';
+        dots.title = t('files.actions');
         dots.addEventListener('click', (event) => {
             event.stopPropagation();
             openMenu(dots, entryMenuItems(entry, info));
@@ -613,7 +634,7 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
             if (entry.isDirectory || !entry.data) return null;
             const info = inspectImage(entry.data);
             if (info?.problems.length) {
-                problems.push(`${entry.name} — ${PROBLEM_TEXT[info.problems[0]]}`);
+                problems.push(`${entry.name} — ${problemText(info.problems[0])}`);
                 if (!firstBroken && info.fixable) firstBroken = entry;
             }
             return info;
@@ -653,7 +674,7 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
                     const badge = document.createElement('span');
                     badge.className = 'tile__warn';
                     badge.textContent = '!';
-                    badge.title = PROBLEM_TEXT[info.problems[0]];
+                    badge.title = problemText(info.problems[0]);
                     box.append(badge);
                 }
 
@@ -679,7 +700,7 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
                     const warn = document.createElement('span');
                     warn.className = 'row__warn';
                     warn.textContent = '!';
-                    warn.title = PROBLEM_TEXT[info.problems[0]];
+                    warn.title = problemText(info.problems[0]);
                     name.append(warn);
                 }
 
@@ -690,7 +711,7 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
                 const kind = document.createElement('span');
                 kind.className = 'row__kind';
                 kind.textContent = entry.isDirectory
-                    ? 'тека'
+                    ? t('files.folderKind')
                     : info
                       ? `${info.width}×${info.height}`
                       : entry.name.split('.').pop()?.toUpperCase() ?? '';
@@ -703,27 +724,33 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
         if (entries.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'files__empty';
-            empty.textContent = 'Перетягніть картинки сюди';
+            empty.textContent = t('files.dropHere');
             content.append(empty);
         }
 
         if (problems.length) {
             const broken = firstBroken as FileEntry | null;
             showNotice(
-                problems[0] + (problems.length > 1 ? ` (і ще ${problems.length - 1})` : ''),
+                problems[0] + (problems.length > 1 ? ` ${t('files.andMore', { n: problems.length - 1 })}` : ''),
                 'warn',
-                broken ? { label: 'Виправити', run: () => void fixImage(broken) } : undefined,
+                broken ? { label: t('files.fixShort'), run: () => void fixImage(broken) } : undefined,
             );
         } else if (notice.classList.contains('files__notice--warn')) {
             notice.hidden = true;
         }
     }
 
+    let rendered = false;
+    onLangChange(() => {
+        if (rendered) draw();
+    });
+
     return {
         root,
         render(list, directories) {
             getList = list;
             getDirs = directories;
+            rendered = true;
             draw();
         },
         currentDir: () => dir,

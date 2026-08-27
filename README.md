@@ -1,166 +1,173 @@
-# Лілка · web IDE
+# Lilka · web IDE
 
-Навчальне середовище для ігрової консолі [Лілка](https://lilka.dev) у браузері.
-Пишемо програму, запускаємо, забираємо на карту пам'яті — без встановлення чого
-завгодно.
+*[Читати українською](README.uk.md)*
 
-**[▶ Спробувати](https://sverdlyuk.github.io/lilka-web-ide/)** ·
-[Архітектура](ARCHITECTURE.md) · [Лілка](https://lilka.dev)
+A browser-based learning environment for the [Lilka](https://lilka.dev) game console.
+Write a program, run it, take it away on the memory card — no installation
+required.
 
----
-
-## Мета
-
-Програма має поводитися у браузері **точно так само**, як на залізі. Не «схоже»,
-а піксель у піксель і кадр у кадр.
-
-Це не педантизм. Середовище призначене для навчання, і найдорожча помилка тут —
-коли учень пише програму, вона працює у браузері, а на справжній Лілці
-поводиться інакше. Тому емулятор портований із прошивки рядок у рядок, включно
-з особливостями, які виглядають як помилки.
-
-## Що вміє
-
-- **Lua 5.4** із життєвим циклом прошивки: `init` / `update(delta)` / `draw`, 30 кадрів/с
-- **Екран 280×240** у RGB565 — примітиви портовані з `Arduino_GFX`, без Canvas 2D
-- **Шрифти** `u8g2_font_*_t_cyrillic`, усі дев'ять, з українськими літерами
-- **Зображення** BMP і PNG, перетворення, точка привʼязки, прозорий колір
-- **Файлова система** `/sd`, `/spiffs`, `/tmp` зі збереженням між сеансами —
-  обидва простори імен прошивки, і `fs.*`, і старіший `sdcard.*`
-- **Звук** через WebAudio, з тими самими нотами, що в прошивці
-- **Кнопки** з клавіатури або мишею, з семантикою `just_pressed` як на залізі
-- **Експорт на карту** — архівом або прямим записом у теку
-- **Редактор** із підсвіткою Lua та автодоповненням із 253 підказок
-- **Запуск на справжній Лілці** через USB та консоль для окремих команд
-- **Віджети** `alertUI`, `keyboardUI` (з українською розкладкою), `progressUI`
-
-Покриття Lua API: **118 зі 181 функції**; у межах задуманого — 118 зі 119 (99%).
-Лишилося `audio.play` — відтворення звукових файлів.
-Різниця — апаратні простори імен, яких у браузері не буде взагалі: `gpio`,
-`spi`, `wifi`, `mqtt` та інші.
-
-Найкращий показник не відсоток, а те, що справжні програми запускаються без
-правок. Вбудовані як приклади: **«Астероїди»** з чотирма модулями через `require` і
-шістнадцятьма ресурсами, **«Змійка»** з таблицею рекордів через `state`,
-офіційний `examples/LUA/cat`, ігри «Кубики» та «Повтори комбінацію» зі
-спільноти.
-
-## Чого ще немає
-
-Імпорт і експорт у GitHub. Див. Issues.
+**[▶ Try it](https://sverdlyuk.github.io/lilka-web-ide/)** ·
+[Architecture](ARCHITECTURE.md) · [Lilka](https://lilka.dev)
 
 ---
 
-## Запуск
+## Goal
+
+The program must behave in the browser **exactly like it does on hardware**.
+Not "close enough" — pixel for pixel, frame for frame.
+
+This isn't pedantry. The environment is meant for learning, and the costliest
+mistake here is a student writing a program that works in the browser but
+behaves differently on a real Lilka. That's why the emulator is ported from
+the firmware line by line, including quirks that look like bugs.
+
+## What it does
+
+- **Lua 5.4** with the firmware's lifecycle: `init` / `update(delta)` / `draw`, 30 fps
+- **280×240 screen** in RGB565 — primitives ported from `Arduino_GFX`, no Canvas 2D
+- **Fonts** `u8g2_font_*_t_cyrillic`, all nine, with Cyrillic letters
+- **Images** BMP and PNG, transforms, anchor point, transparent color
+- **File system** `/sd`, `/spiffs`, `/tmp` persisted between sessions —
+  both firmware namespaces, `fs.*` and the older `sdcard.*`
+- **Sound** via WebAudio, with the same notes as the firmware
+- **Buttons** from keyboard or mouse, with `just_pressed` semantics matching hardware
+- **Export to card** — as an archive or written straight into a folder
+- **Editor** with Lua syntax highlighting and autocompletion from 253 hints
+- **Run on a real Lilka** over USB, plus a console for one-off commands
+- **English and Ukrainian interface**, detected from the browser and switchable live
+- **Widgets** `alertUI`, `keyboardUI` (with a Ukrainian layout), `progressUI`
+
+Lua API coverage: **118 of 181 functions**; within scope — 118 of 119 (99%).
+Missing: `audio.play` — playing audio files.
+The rest of the gap is hardware namespaces that will never exist in a
+browser: `gpio`, `spi`, `wifi`, `mqtt`, and others.
+
+The best measure isn't the percentage — it's that real programs run without
+edits. Bundled as examples: **Asteroids**, with four modules via `require`
+and sixteen resources; **Snake**, with a high-score table via `state`; the
+official `examples/LUA/cat`; and the community games "Dice" and "Repeat the
+pattern".
+
+## What's still missing
+
+Importing and exporting via GitHub. See Issues.
+
+---
+
+## Running it
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173 — відкривати в Chrome
+npm run dev        # http://localhost:5173 — open in Chrome
 ```
 
-Chrome потрібен, бо Lua виконується у Web Worker із `SharedArrayBuffer`, а це
-вимагає заголовків COOP/COEP. Локально їх видає dev-сервер Vite, у продакшені —
-`coi-serviceworker`. Firefox і Safari теж їх підтримують, але там середовище ще
-не перевірялося.
+Chrome is required because Lua runs in a Web Worker with `SharedArrayBuffer`,
+which needs COOP/COEP headers. Locally these come from the Vite dev server;
+in production, from `coi-serviceworker`. Firefox and Safari support them too,
+but the environment hasn't been tested there yet.
 
-Усі згенеровані файли вже в репозиторії — доганяти нічого не треба.
+All generated files are already in the repository — nothing to catch up on.
 
 ```bash
-npm run check      # 124 автоматичні перевірки
+npm run check      # 124 automated checks
 npm run build      # tsc --noEmit + vite build -> dist/
-npm run test:e2e   # Playwright: чи працює редактор у справжньому браузері
+npm run test:e2e   # Playwright: does the editor work in a real browser
 ```
 
-Перед першим `test:e2e` потрібен браузер: `npx playwright install chromium`.
+`test:e2e` needs a browser the first time: `npx playwright install chromium`.
 
 <details>
-<summary>Решта команд</summary>
+<summary>Other commands</summary>
 
 ```bash
-npm run check:primitives # геометрія
-npm run check:fonts      # шрифти
-npm run check:images     # растр і перетворення
-npm run check:vfs        # файлова система
-npm run check:completions # автодоповнення
-npm run check:widgets    # віджети інтерфейсу
-npm run check:runtime    # рантайм Lua
-npm run gen:api          # перегенерувати lilka-api.json з keira
-npm run gen:fonts        # перегенерувати шрифти (тягне ~40 МБ джерела, кешує)
-npm run gen:fmath        # таблиці синусів
-npm run gen:notes        # таблиця нот
-npm run gen:completions  # підказки редактора з анотацій прошивки
-npm run gen:icons        # піктограми клавіатури
-npm run gen:coverage     # звіт покриття API
-npm run render:testcard  # PNG тест-карти без браузера
+npm run check:primitives # geometry
+npm run check:fonts      # fonts
+npm run check:images     # raster and transforms
+npm run check:vfs        # file system
+npm run check:completions # autocompletion
+npm run check:widgets    # UI widgets
+npm run check:runtime    # Lua runtime
+npm run gen:api          # regenerate lilka-api.json from keira
+npm run gen:fonts        # regenerate fonts (pulls ~40 MB of source, cached)
+npm run gen:fmath        # sine tables
+npm run gen:notes        # note table
+npm run gen:completions  # editor hints from firmware annotations
+npm run gen:icons        # keyboard icons
+npm run gen:coverage     # API coverage report
+npm run render:testcard  # test-card PNG without a browser
 ```
 
-Скрипти на `.mts` виконуються через `node --experimental-strip-types`, тож
-потрібен **Node 22+**.
+Scripts ending in `.mts` run via `node --experimental-strip-types`, so
+**Node 22+** is required.
 
 </details>
 
-## Розгортання
+## Deployment
 
-`.github/workflows/deploy.yml` перевіряє типи, ганяє `npm run check` і лише
-тоді збирає й публікує на GitHub Pages — зламаний код туди не потрапить.
-`VITE_BASE` підставляється з назви репозиторію автоматично.
+`.github/workflows/deploy.yml` type-checks, runs `npm run check`, and only
+then builds and publishes to GitHub Pages — broken code never reaches it.
+`VITE_BASE` is filled in from the repository name automatically.
 
-`.github/workflows/ci.yml` робить те саме плюс `npm run test:e2e` і `npm run
-build` — на кожен pull request і на кожен push у `main`. Без нього PR можна
-було б злити без жодної автоматичної перевірки: `deploy.yml` на pull request
-не реагує.
+`.github/workflows/ci.yml` does the same plus `npm run test:e2e` and `npm run
+build` — on every pull request and every push to `main`. Without it a PR
+could be merged without any automated check at all: `deploy.yml` doesn't
+react to pull requests.
 
-`public/coi-serviceworker.js` мусить лишатися окремим файлом поза бандлом і
-віддаватися з власного origin — інакше не буде `SharedArrayBuffer`, а без нього
-не запуститься рантайм.
-
----
-
-## Як усе влаштоване
-
-Коротко: Lua виконується у Web Worker і пише пікселі прямо в
-`SharedArrayBuffer`, головний потік лише виводить їх на canvas. Темп задає
-воркер — 30 кадрів/с із цілими 33 мс, як `perfectDelta` у прошивці.
-
-Подробиці, схеми й пояснення, чому саме так, — у **[ARCHITECTURE.md](ARCHITECTURE.md)**.
-Там же каталог особливостей заліза, відтворених навмисно.
-
-Правила для роботи з кодом (зокрема через ШІ) — у [CLAUDE.md](CLAUDE.md).
-
-## Внесок
-
-Найкорисніше зараз — **приносити справжні програми для Лілки** й перевіряти, чи
-запускаються. Кожна така спроба досі знаходила щось: так знайшлися відсутній
-`buzzer`, невідома таблиця `notes` і те, що простори імен були `userdata`
-замість таблиць.
-
-Якщо програма не запускається — **[заведіть Issue](https://github.com/sverdlyuk/lilka-web-ide/issues/new)**.
-Причина може бути в емуляторі (найцікавіший випадок), у самій програмі, або в
-тому, що можливість у браузері недосяжна принципово — як-от мережа чи виводи
-GPIO. Розібратися варто в кожному разі.
-
-Що прикласти до Issue:
-
-- код програми або посилання на неї
-- повідомлення з консолі середовища, якщо воно є
-- що мало статися і що сталося натомість
+`public/coi-serviceworker.js` must stay a separate file outside the bundle,
+served from its own origin — otherwise there's no `SharedArrayBuffer`, and
+without it the runtime won't start.
 
 ---
 
-## Джерела й ліцензії сторонніх частин
+## How it all works
 
-| Що | Звідки | Ліцензія |
+In short: Lua runs in a Web Worker and writes pixels straight into a
+`SharedArrayBuffer`; the main thread only presents them on a canvas. The
+worker sets the pace — 30 fps at a flat 33 ms, like `perfectDelta` in the
+firmware.
+
+Details, diagrams, and the reasoning behind it all — in
+**[ARCHITECTURE.md](ARCHITECTURE.md)**. That's also where the catalog of
+deliberately reproduced hardware quirks lives.
+
+Rules for working with the code (including via AI) — in [CLAUDE.md](CLAUDE.md)
+(Ukrainian; it's the project's internal contributor/AI convention document).
+
+## Contributing
+
+The most useful thing right now is **bringing real Lilka programs** and
+checking whether they run. Every such attempt so far has found something:
+that's how a missing `buzzer`, an unknown `notes` table, and namespaces that
+turned out to be `userdata` instead of tables were found.
+
+If a program doesn't run — **[file an Issue](https://github.com/sverdlyuk/lilka-web-ide/issues/new)**.
+The cause could be the emulator (the most interesting case), the program
+itself, or a capability that's fundamentally unreachable in a browser — like
+networking or GPIO pins. Either way, it's worth digging into.
+
+What to attach to the Issue:
+
+- the program's code or a link to it
+- the message from the environment's console, if there is one
+- what should have happened and what happened instead
+
+---
+
+## Sources and licenses of third-party parts
+
+| What | From | License |
 |---|---|---|
-| Растрові примітиви | `moononournation/Arduino_GFX` | BSD-3-Clause |
-| Дані шрифтів `t_cyrillic` | `olikraus/u8g2` | BSD-2-Clause |
-| Таблиці синусів, піни, константи | `lilka-dev/sdk`, `lilka-dev/keira` | MIT |
-| Рантайм Lua | `wasmoon` | MIT |
+| Raster primitives | `moononournation/Arduino_GFX` | BSD-3-Clause |
+| `t_cyrillic` font data | `olikraus/u8g2` | BSD-2-Clause |
+| Sine tables, pins, constants | `lilka-dev/sdk`, `lilka-dev/keira` | MIT |
+| Lua runtime | `wasmoon` | MIT |
 | COOP/COEP | `coi-serviceworker` | MIT |
-| Приклади | програми спільноти Лілки | за згодою авторів |
+| Examples | Lilka community programs | with authors' permission |
 
-Шрифти й примітиви не копіювалися як файли: вони генеруються скриптами `gen-*`
-з первотвору. Але похідні дані в репозиторії є, тож атрибуцію варто зберігати.
+Fonts and primitives weren't copied as files: they're generated by `gen-*`
+scripts from the source. But the derived data lives in the repository, so
+attribution is worth keeping.
 
-## Ліцензія
+## License
 
 GPL-2.0-or-later.

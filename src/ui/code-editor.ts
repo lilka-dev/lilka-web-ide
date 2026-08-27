@@ -23,6 +23,7 @@ import {
 } from '@codemirror/autocomplete';
 import { tags } from '@lezer/highlight';
 import { COMPLETIONS } from '../generated/completions.ts';
+import { t, getLang } from '../i18n/index.ts';
 
 /**
  * Підсвітка в кольорах середовища.
@@ -93,13 +94,14 @@ function lilkaCompletions(context: CompletionContext): CompletionResult | null {
     const word = context.matchBefore(/[\w.]*/);
     if (!word || (word.from === word.to && !context.explicit)) return null;
 
+    const uk = getLang() === 'uk';
     return {
         from: word.from,
         options: COMPLETIONS.map((item) => ({
             label: item.label,
             type: item.type,
-            detail: item.detail,
-            info: item.info || undefined,
+            detail: (uk ? item.detail : (item.detailEn ?? item.detail)) || undefined,
+            info: (uk ? item.info : item.infoEn || item.info) || undefined,
             apply: item.apply,
         })),
         validFor: /^[\w.]*$/,
@@ -133,7 +135,7 @@ export function createCodeEditor(options: {
                 syntaxHighlighting(HIGHLIGHT),
                 THEME,
                 autocompletion({ override: [lilkaCompletions], activateOnTyping: true }),
-                placeholder('Тут буде програма для Лілки'),
+                placeholder(t('editor.placeholder')),
                 keymap.of([
                     // Ctrl/Cmd+Enter запускає, Ctrl/Cmd+S зберігає негайно.
                     // Обидві комбінації мусять стояти ПЕРЕД типовими, інакше
