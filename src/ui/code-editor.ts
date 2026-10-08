@@ -10,7 +10,7 @@
  * українськими поясненнями, і не розходяться з дійсністю при зміні прошивки.
  */
 
-import { EditorView, keymap, lineNumbers, highlightActiveLine, placeholder } from '@codemirror/view';
+import { EditorView, keymap, lineNumbers, highlightActiveLine, placeholder, scrollPastEnd } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { StreamLanguage, HighlightStyle, syntaxHighlighting, indentUnit } from '@codemirror/language';
@@ -53,6 +53,11 @@ const THEME = EditorView.theme({
         overflow: 'hidden',
     },
     '&.cm-focused': { outline: 'none', borderColor: '#0e7c86' },
+    /*
+     * Висоту задає контейнер (`.editor__code` у style.css), а прокручується
+     * лише внутрішній скролер — без другої смуги прокрутки навколо поля.
+     */
+    '.cm-scroller': { overscrollBehavior: 'contain' },
     '.cm-content': {
         fontFamily: "ui-monospace, 'SF Mono', Menlo, Consolas, monospace",
         padding: '10px 0',
@@ -161,6 +166,9 @@ export function createCodeEditor(options: {
                     indentWithTab,
                 ]),
                 EditorView.lineWrapping,
+                // Останній рядок можна підняти до верху поля, а не лише до низу:
+                // кінець програми не ховається за краєм вікна
+                scrollPastEnd(),
                 EditorView.updateListener.of((update) => {
                     if (update.docChanged) options.onChange();
                 }),
@@ -180,9 +188,11 @@ export function createCodeEditor(options: {
         goToLine(line) {
             const total = view.state.doc.lines;
             const target = view.state.doc.line(Math.min(Math.max(line, 1), total));
+            // Рядок стає посередині, а не впритул до краю: видно і що перед
+            // помилкою, і що після
             view.dispatch({
                 selection: { anchor: target.from },
-                scrollIntoView: true,
+                effects: EditorView.scrollIntoView(target.from, { y: 'center' }),
             });
             view.focus();
         },

@@ -77,6 +77,10 @@ const ICONS: Record<string, string> = {
         <path d="M12 16.5V4.5M12 4.5l-4.2 4.2M12 4.5l4.2 4.2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
         <path d="M4 15v3.2A1.8 1.8 0 0 0 5.8 20h12.4a1.8 1.8 0 0 0 1.8-1.8V15" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
     `,
+    download: `
+        <path d="M12 4.5v12M12 16.5l-4.2-4.2M12 16.5l4.2-4.2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M4 15v3.2A1.8 1.8 0 0 0 5.8 20h12.4a1.8 1.8 0 0 0 1.8-1.8V15" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
+    `,
     plus: `
         <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>
     `,

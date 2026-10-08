@@ -30,8 +30,9 @@ test('немає вкладок мов: редактор Lua — єдиний і
 
 test('редактор показує зразковий код і кнопки в очікуваному стані', async ({ page }) => {
     await expect(page.locator('.cm-content')).toContainText('Кольорове коло');
+    // Запуск і зупинка — одна кнопка: до запуску «Stop» немає взагалі
     await expect(page.getByRole('button', { name: 'Run' })).toBeEnabled();
-    await expect(page.getByRole('button', { name: 'Stop' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(0);
 });
 
 test('кнопка підключення Лілки стоїть у панелі дій', async ({ page }) => {
@@ -49,7 +50,7 @@ test('«Run» справді виконує програму', async ({ page }) 
 
     await expect(page.locator('.editor__status')).toHaveText('running');
     await expect(page.getByRole('button', { name: 'Stop' })).toBeEnabled();
-    await expect(page.getByRole('button', { name: 'Run' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Run' })).toHaveCount(0);
     await expect(page.locator('.editor__console')).toContainText('Привіт з Лілки!');
 
     expect(errors).toEqual([]);
@@ -62,8 +63,9 @@ test('«Stop» повертає середовище в стан «ready»', asy
     await page.getByRole('button', { name: 'Stop' }).click();
 
     await expect(page.locator('.editor__status')).toHaveText('ready', { timeout: 10_000 });
+    // Запуск і зупинка — одна кнопка: до запуску «Stop» немає взагалі
     await expect(page.getByRole('button', { name: 'Run' })).toBeEnabled();
-    await expect(page.getByRole('button', { name: 'Stop' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(0);
 });
 
 test('вибір прикладу зі списку підміняє код у редакторі', async ({ page }) => {

@@ -24,6 +24,8 @@ const en = {
     'editor.goToLine': 'Go to line {n}',
     'editor.placeholder': 'Your Lilka program goes here',
     'editor.langTitle': 'Interface language',
+    'editor.export': 'Export',
+    'editor.exportTitle': 'Download all files as a .zip archive',
 
     'host.idle': 'starting environment…',
     'host.loading': 'loading Lua…',
@@ -124,6 +126,11 @@ const en = {
     'hud.stats': '{fps} fps output · Lua frame {frame} · skipped {skipped} · scale {scale}×',
     'hud.scaleOnly': 'scale {scale}×',
 
+    'side.title': 'Explorer',
+
+    'errorBar.title': 'Error',
+    'errorBar.dismiss': 'Dismiss',
+
     'example.circle': 'Circle & buttons',
     'example.dice': 'Dice game',
     'example.simon': 'Repeat the pattern',
@@ -144,6 +151,8 @@ const uk: Record<Key, string> = {
     'editor.goToLine': 'Перейти до рядка {n}',
     'editor.placeholder': 'Тут буде програма для Лілки',
     'editor.langTitle': 'Мова інтерфейсу',
+    'editor.export': 'Експорт',
+    'editor.exportTitle': 'Завантажити всі файли архівом .zip',
 
     'host.idle': 'запуск середовища…',
     'host.loading': 'завантаження Lua…',
@@ -243,6 +252,11 @@ const uk: Record<Key, string> = {
 
     'hud.stats': '{fps} к/с виводу · кадр Lua {frame} · пропущено {skipped} · масштаб {scale}×',
     'hud.scaleOnly': 'масштаб {scale}×',
+
+    'side.title': 'Провідник',
+
+    'errorBar.title': 'Помилка',
+    'errorBar.dismiss': 'Сховати',
 
     'example.circle': 'Коло та кнопки',
     'example.dice': 'Гра «Кубики»',

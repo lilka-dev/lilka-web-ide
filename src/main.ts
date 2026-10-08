@@ -25,12 +25,13 @@ import { createEditor, SAMPLE_CODE } from './ui/editor.ts';
 import { exampleAssets } from './examples/index.ts';
 import { LilkaDevice, isSerialSupported } from './device/serial.ts';
 import { createConsolePanel } from './ui/console.ts';
+import { createErrorBar } from './ui/error-bar.ts';
 import { createFilesPanel, ROOT, type FileEntry } from './ui/files.ts';
 import { basename, dirname } from './emulator/vfs.ts';
 import { LuaHost } from './runtime/host.ts';
 import { loadAllFontJson } from './emulator/fonts.ts';
 import type { FontJson } from './emulator/font.ts';
-import { t, onLangChange, type Key } from './i18n/index.ts';
+import { t, bindText, onLangChange, type Key } from './i18n/index.ts';
 
 const board = getBoard();
 
@@ -42,24 +43,38 @@ controller.attachKeyboard();
 const app = document.querySelector<HTMLDivElement>('#app');
 if (!app) throw new Error('Не знайдено #app');
 
-// Дві колонки, як у CodeBug: ліворуч пристрій, праворуч код
-const deviceColumn = document.createElement('div');
-deviceColumn.className = 'column';
+// Три колонки, як у VS Code: файли збоку, код посередині, пристрій праворуч
+// як попередній перегляд результату
+const sideColumn = document.createElement('aside');
+sideColumn.className = 'column column--side';
 const editorColumn = document.createElement('div');
 editorColumn.className = 'column column--editor';
-app.append(deviceColumn, editorColumn);
+const deviceColumn = document.createElement('div');
+deviceColumn.className = 'column column--device';
+app.append(sideColumn, editorColumn, deviceColumn);
 
 const shell = createShell(board, controller, screen);
 deviceColumn.append(shell.root);
-
-const hud = document.createElement('div');
-hud.className = 'hud';
-deviceColumn.append(hud);
 
 // ------------------------------------------------------------------ рантайм Lua
 
 const editor = createEditor(SAMPLE_CODE);
 editorColumn.append(editor.root);
+
+const sideHead = document.createElement('header');
+sideHead.className = 'side__head';
+const sideTitle = document.createElement('span');
+sideTitle.className = 'side__title';
+bindText(sideTitle, 'side.title');
+sideHead.append(sideTitle, editor.langToggle);
+sideColumn.append(sideHead);
+
+const errorBar = createErrorBar((line) => editor.goToLine(line));
+deviceColumn.append(errorBar.root, editor.consoleRoot);
+
+const hud = document.createElement('div');
+hud.className = 'hud';
+deviceColumn.append(hud);
 
 let fontJson: Record<string, FontJson> = {};
 
@@ -128,7 +143,7 @@ function saveAs(name: string, data: Uint8Array): void {
  * Шляхи в архіві рахуються від самої теки, без неї самої — тож розпакування
  * поруч дає ту саму структуру, яку чекає програма.
  */
-async function downloadPath(path: string): Promise<void> {
+async function downloadPath(path: string, archiveName = basename(path)): Promise<void> {
     const info = host.vfs.stat(path);
 
     if (info && !info.isDirectory) {
@@ -151,7 +166,7 @@ async function downloadPath(path: string): Promise<void> {
     }
 
     const { zipSync } = await import('fflate');
-    saveAs(`${basename(path)}.zip`, zipSync(entries, { level: 6 }));
+    saveAs(`${archiveName}.zip`, zipSync(entries, { level: 6 }));
 }
 
 // Панель файлів живе під пристроєм, а не під редактором: ліворуч під
@@ -176,7 +191,7 @@ const files = createFilesPanel({
     // з'являвся б у кожній теці, куди зайшли подивитися
     onDirChange: () => {},
 });
-deviceColumn.append(files.root);
+sideColumn.append(files.root);
 
 /**
  * Мітка стану оновлюється і на подію рантайму, і на зміну мови.
@@ -201,7 +216,10 @@ onLangChange(() => drawHostState(lastHostState));
 
 const host = new LuaHost(board, DEFAULT_FONT, {
     onPrint: (text) => editor.print(text),
-    onError: (message) => editor.print(message, 'err'),
+    onError: (message) => {
+        editor.print(message, 'err');
+        errorBar.show(message);
+    },
     onFilesChange: () => refreshFiles(),
     onStateChange: drawHostState,
 });
@@ -349,6 +367,16 @@ drawDeviceButton();
 editor.onRun(() => void runEditorCode());
 
 /**
+ * Експорт — уся картка `/sd` одним архівом, з усіма теками й прикладами.
+ * Розпакований у корінь справжньої картки, він дає ту саму структуру, що й
+ * тут. Назва `sd` нічого не каже, тож архів отримує назву пристрою.
+ */
+editor.onExport(() => {
+    editor.flush();
+    void downloadPath(ROOT, 'lilka');
+});
+
+/**
  * Спершу зберегти файл, і лише тоді запускати.
  *
  * Раніше обидві дії йшли одночасно, тож воркер міг отримати вміст карти без
@@ -357,6 +385,7 @@ editor.onRun(() => void runEditorCode());
  */
 async function runEditorCode(): Promise<void> {
     editor.clearConsole();
+    errorBar.clear();
     // Записати негайно: автозбереження має затримку, і без цього воркер міг
     // би отримати попередню версію коду
     editor.flush();
@@ -520,6 +549,7 @@ void (async () => {
         // інакше заставка виглядає як зависання, і причина лишається невідомою
         const message = error instanceof Error ? error.message : String(error);
         editor.print(message, 'err');
+        errorBar.show(message);
         editor.setState(t('host.failedToStart'), false);
         showFailure(message);
     }

@@ -8,6 +8,7 @@
 
 import { EXAMPLES } from '../examples/index.ts';
 import type { CodeEditor } from './code-editor.ts';
+import { iconElement } from './icons.ts';
 import { t, bindText, bindTitle, getLang, setLang, onLangChange } from '../i18n/index.ts';
 
 export interface EditorPanel {
@@ -25,6 +26,10 @@ export interface EditorPanel {
     setFile(path: string): void;
     /** Зберігає негайно — потрібно перед запуском. */
     flush(): void;
+    /** Перемикач мови — стоїть у заголовку бічної панелі, а не в рядку дій. */
+    langToggle: HTMLElement;
+    /** Консоль — її розміщує той, хто збирає сторінку. */
+    consoleRoot: HTMLElement;
     /** Місце для кнопки підключення до Лілки. */
     deviceSlot: HTMLElement;
     /** Показує чи ховає кнопку «На пристрої». */
@@ -32,6 +37,10 @@ export interface EditorPanel {
     onRunOnDevice(handler: () => void): void;
     /** Підміняє консоль середовища консоллю Лілки. */
     showConsole(panel: HTMLElement | null): void;
+    /** Переводить курсор на рядок — з помилки поза консоллю. */
+    goToLine(line: number): void;
+    /** Натиснуто «Експорт» — програму треба віддати архівом. */
+    onExport(handler: () => void): void;
     /** Вибрано приклад — можливо, із супутніми файлами. */
     onExample(handler: (example: (typeof EXAMPLES)[number]) => void): void;
 }
@@ -75,10 +84,32 @@ export function createEditor(initialCode: string): EditorPanel {
     const bar = document.createElement('div');
     bar.className = 'editor__bar';
 
+    /*
+     * Одна кнопка на запуск і зупинку.
+     *
+     * Дві окремі кнопки завжди мали одну неактивну — вона лише займала місце.
+     * Тепер кнопка показує ту дію, яка зараз має сенс.
+     */
     const runButton = document.createElement('button');
     runButton.type = 'button';
-    runButton.className = 'button button--primary';
-    bindText(runButton, 'editor.run');
+    runButton.className = 'button button--primary editor__run';
+    let running = false;
+    const drawRunButton = () => {
+        runButton.textContent = t(running ? 'editor.stop' : 'editor.run');
+        runButton.classList.toggle('button--primary', !running);
+        runButton.classList.toggle('button--stop', running);
+    };
+    drawRunButton();
+    onLangChange(drawRunButton);
+    const runHandlers: Array<() => void> = [];
+    const stopHandlers: Array<() => void> = [];
+    const startRun = () => {
+        if (!running) for (const handler of runHandlers) handler();
+    };
+    runButton.addEventListener('click', () => {
+        if (running) for (const handler of stopHandlers) handler();
+        else startRun();
+    });
 
     /** З'являється лише при підключеній Лілці — інакше лише збивала б. */
     const deviceRunButton = document.createElement('button');
@@ -86,12 +117,6 @@ export function createEditor(initialCode: string): EditorPanel {
     deviceRunButton.className = 'button button--device';
     bindText(deviceRunButton, 'editor.runOnDevice');
     deviceRunButton.hidden = true;
-
-    const stopButton = document.createElement('button');
-    stopButton.type = 'button';
-    stopButton.className = 'button';
-    bindText(stopButton, 'editor.stop');
-    stopButton.disabled = true;
 
     // Приклади — справжні програми для заліза, а не спрощені демонстрації
     const picker = document.createElement('select');
@@ -114,6 +139,19 @@ export function createEditor(initialCode: string): EditorPanel {
         setText(example.code);
         exampleHandler(example);
     });
+
+    /*
+     * Експорт усіх файлів архівом — разом із картинками й модулями, бо без
+     * них програми на Лілці не запустяться.
+     */
+    const exportButton = document.createElement('button');
+    exportButton.type = 'button';
+    exportButton.className = 'button editor__tool';
+    exportButton.append(iconElement('download', 15));
+    const exportLabel = document.createElement('span');
+    bindText(exportLabel, 'editor.export');
+    exportButton.append(exportLabel);
+    bindTitle(exportButton, 'editor.exportTitle');
 
     const status = document.createElement('span');
     status.className = 'editor__status';
@@ -161,7 +199,8 @@ export function createEditor(initialCode: string): EditorPanel {
     onLangChange(syncLangButtons);
     langToggle.append(enButton, ukButton);
 
-    bar.append(runButton, deviceRunButton, stopButton, picker, status, langToggle, deviceSlot);
+    // Підключення ліворуч, запуск праворуч — на краю, де закінчується рядок
+    bar.append(deviceSlot, deviceRunButton, picker, exportButton, status, runButton);
 
     /*
      * Рядок із назвою файлу.
@@ -228,14 +267,24 @@ export function createEditor(initialCode: string): EditorPanel {
     const replSlot = document.createElement('div');
     replSlot.className = 'editor__repl-slot';
 
-    root.append(bar, fileBar, stub, output, replSlot);
+    /*
+     * Консоль живе не в колонці коду, а під пристроєм — поруч зі смугою
+     * помилки. Там вона на виду під час запуску, а поле коду отримує всю
+     * висоту колонки.
+     */
+    const consoleRoot = document.createElement('div');
+    consoleRoot.className = 'output';
+    consoleRoot.append(output, replSlot);
+
+    root.append(bar, fileBar, stub);
 
     void (async () => {
         const { createCodeEditor } = await import('./code-editor.ts');
         code = createCodeEditor({
             initial: pendingText,
             onChange: scheduleSave,
-            onRun: () => runButton.click(),
+            // Лише запуск: повторне натискання під час роботи не має зупиняти
+            onRun: startRun,
             onSave: saveNow,
         });
         code.dom.classList.add('editor__code');
@@ -268,13 +317,15 @@ export function createEditor(initialCode: string): EditorPanel {
         clearConsole() {
             output.textContent = '';
         },
-        setState(state: string, running: boolean) {
+        setState(state: string, isRunning: boolean) {
             status.textContent = state;
-            runButton.disabled = running;
-            stopButton.disabled = !running;
+            running = isRunning;
+            drawRunButton();
         },
-        onRun: (handler) => runButton.addEventListener('click', handler),
-        onStop: (handler) => stopButton.addEventListener('click', handler),
+        goToLine: (line) => code?.goToLine(line),
+        onRun: (handler) => runHandlers.push(handler),
+        onExport: (handler) => exportButton.addEventListener('click', handler),
+        onStop: (handler) => stopHandlers.push(handler),
         onExample: (handler: (example: (typeof EXAMPLES)[number]) => void) => {
             exampleHandler = handler;
         },
@@ -287,6 +338,8 @@ export function createEditor(initialCode: string): EditorPanel {
             setSaved();
         },
         flush: saveNow,
+        consoleRoot,
+        langToggle,
         deviceSlot,
         setDeviceReady: (ready) => {
             deviceRunButton.hidden = !ready;

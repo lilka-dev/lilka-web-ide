@@ -62,9 +62,9 @@ body {
 }
 
 /*
- * Дві колонки: ліворуч пристрій, праворуч код. Пристрій компактний — органи
- * керування під екраном, — тому колонка вузька і місця під код лишається
- * більше.
+ * Три колонки, як у VS Code: файли, код, пристрій. Пристрій компактний —
+ * органи керування під екраном, — тому колонка вузька і місця під код
+ * лишається більше.
  */
 #app {
     min-height: 100%;
@@ -79,11 +79,15 @@ body {
      * і через округлення він падав до 1x. Із запасом до 680 масштаб стабільно
      * подвійний, а це вчетверо більше пікселів на екрані Лілки.
      */
-    grid-template-columns: minmax(300px, 680px) minmax(340px, 1fr);
+    /*
+     * Третя колонка поруч із файлами з'їдала б код повністю, тож пристрій
+     * обмежено ще й 40% ширини вікна.
+     */
+    grid-template-columns: 260px minmax(340px, 1fr) minmax(300px, min(680px, 40vw));
     align-content: start;
     gap: 16px;
     padding: 16px;
-    max-width: 1400px;
+    max-width: 1920px;
     margin: 0 auto;
 }
 
@@ -95,11 +99,12 @@ body {
 }
 
 /*
- * На вузькому екрані колонки складаються в одну. Порядок при цьому інший,
+ * На вузькому екрані (до 1100 px — менше трьом колонкам тісно) колонки
+ * складаються в одну. Порядок при цьому інший,
  * ніж на широкому: спершу пристрій, тоді код, і лише потім файли — бо
  * писати починають одразу, а файли потрібні згодом.
  */
-@media (max-width: 880px) {
+@media (max-width: 1100px) {
     #app {
         grid-template-columns: 1fr;
         padding: 10px;
@@ -113,17 +118,26 @@ body {
         display: contents;
     }
 
+    .side__head {
+        order: 0;
+    }
     .device {
         order: 1;
     }
-    .hud {
+    .error-bar {
         order: 2;
     }
-    .editor {
+    .output {
         order: 3;
     }
-    .files {
+    .hud {
         order: 4;
+    }
+    .editor {
+        order: 5;
+    }
+    .files {
+        order: 6;
     }
 }
 
@@ -348,6 +362,17 @@ body {
     background: var(--teal);
     border-color: var(--teal-deep);
     color: #fff;
+}
+
+/* Той самий запуск у стані «зупинити» — бурштин, як інші дії */
+.button--stop {
+    background: var(--amber);
+    border-color: var(--amber-deep);
+    color: var(--amber-ink);
+}
+
+.editor__run {
+    min-width: 92px;
 }
 
 .editor__picker {
@@ -1345,4 +1370,211 @@ body {
     font-size: 11px;
     color: #9cb3a8;
     white-space: nowrap;
+}
+
+/* ------------------------------------------------- робоча область на весь екран */
+
+/*
+ * На широкому екрані сторінка не прокручується цілком: кожна колонка має
+ * власну прокрутку, а поле коду займає всю висоту, що лишилася.
+ *
+ * Раніше поле було обмежене 60vh і мало ручку зміни розміру, а довгий код
+ * прокручувався всередині, поки сторінка теж прокручувалась — колесо миші
+ * «перескакувало» між двома смугами. Тепер прокрутка коду одна, а пристрій
+ * завжди на виду поруч із кодом.
+ */
+@media (min-width: 1101px) {
+    #app {
+        height: 100vh;
+        height: 100dvh;
+        min-height: 0;
+        align-content: stretch;
+        grid-template-rows: minmax(0, 1fr);
+    }
+
+    .column {
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+    }
+
+    .column--editor {
+        overflow: hidden;
+    }
+
+    /* Колонка пристрою прокручується сама; без цього панель файлів
+       (overflow: hidden) стискалася б до нуля, щоб усе влізло у висоту */
+    .column--device > * {
+        flex-shrink: 0;
+    }
+
+    .editor {
+        flex: 1;
+        min-height: 0;
+    }
+
+    .editor__code,
+    .editor__code--stub {
+        flex: 1 1 auto;
+        min-height: 200px;
+        max-height: none;
+        resize: none;
+        padding: 0;
+    }
+
+    .editor__code--stub {
+        padding: 10px 12px 10px 44px;
+    }
+
+    .editor__code.cm-editor {
+        overflow: hidden;
+    }
+
+}
+
+.editor__code .cm-scroller {
+    scrollbar-width: thin;
+    scrollbar-color: #c3d4cc transparent;
+}
+
+/* ------------------------------------------------- помилка під пристроєм */
+
+.error-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 10px 10px 12px;
+    background: #fdf1ef;
+    border: 1px solid #f0c2bb;
+    border-left: 4px solid #c0392b;
+    border-radius: 10px;
+}
+
+.error-bar__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.error-bar__title {
+    font-weight: 600;
+    color: #c0392b;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.error-bar__jump {
+    appearance: none;
+    font: inherit;
+    font-size: 12px;
+    color: #c0392b;
+    background: transparent;
+    border: 1px solid #f0c2bb;
+    border-radius: 6px;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+
+.error-bar__jump:hover {
+    background: #fbe1dc;
+}
+
+.error-bar__close {
+    appearance: none;
+    margin-left: auto;
+    font: inherit;
+    font-size: 18px;
+    line-height: 1;
+    color: var(--muted);
+    background: transparent;
+    border: none;
+    padding: 0 4px;
+    cursor: pointer;
+}
+
+.error-bar__text {
+    margin: 0;
+    max-height: 120px;
+    overflow: auto;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 12px;
+    color: #7a1f14;
+    white-space: pre-wrap;
+    word-break: break-word;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+/* Консоль під пристроєм, у тій самій колонці, що й смуга помилки */
+.output {
+    display: flex;
+    flex-direction: column;
+}
+
+.output .editor__console {
+    min-height: 60px;
+    max-height: 180px;
+}
+
+/* ------------------------------------------------- бічна панель (файли) */
+
+.side__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 40px;
+}
+
+.side__title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+/* Вузька колонка: кнопки панелі файлів переносяться, а не вилазять за край */
+.column--side .files__bar {
+    flex-wrap: wrap;
+}
+
+@media (min-width: 1101px) {
+    .column--side .files {
+        flex: 1 0 auto;
+    }
+}
+
+/*
+ * Кнопки рядка дій поруч одна з одною — підключення, приклади, експорт —
+ * однакові за висотою, шрифтом і відступами. Раніше «Підключити» була
+ * нижчою за список прикладів, і рядок виглядав нерівним.
+ */
+.editor__bar .device-chip,
+.editor__bar .editor__picker,
+.editor__bar .editor__tool {
+    box-sizing: border-box;
+    height: 40px;
+    min-height: 40px;
+    padding: 0 12px;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1;
+    border-radius: 8px;
+}
+
+.editor__bar .editor__picker {
+    padding-right: 28px;
+    /* Стрілку `appearance: none` прибирає — малюємо свою, щоб було видно, що це список */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%235c7a6e' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 11px center;
+}
+
+.editor__tool {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
