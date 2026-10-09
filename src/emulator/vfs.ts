@@ -79,10 +79,42 @@ export function basename(path: string): string {
 export class MemoryFs {
     private readonly files = new Map<string, Uint8Array>();
     private readonly dirs = new Set<string>(['']);
+    /** Шлях у нижньому регістрі -> шлях так, як його записали (лише для FAT). */
+    private readonly canonical = new Map<string, string>([['', '']]);
+    private readonly caseInsensitive: boolean;
+
+    /**
+     * `caseInsensitive` — поведінка FAT на SD-карті: регістр імені
+     * зберігається, але під час пошуку не важить. На залізі
+     * `require("JSON")` знаходить `json.lua` (так написано застосунок
+     * lilweather з каталогу), а в чутливій до регістру пам'яті — ні. SPIFFS
+     * регістр розрізняє, тож для нього прапорця немає.
+     */
+    constructor(caseInsensitive = false) {
+        this.caseInsensitive = caseInsensitive;
+    }
 
     /** Ключ — шлях відносно точки монтування, без початкової риски. */
     private key(path: string): string {
-        return normalizePath(path).slice(1);
+        return this.resolveKey(normalizePath(path).slice(1));
+    }
+
+    /** Наявний запис з тим самим іменем без огляду на регістр, інакше — новий у теці-батьку з її справжнім іменем. */
+    private resolveKey(key: string): string {
+        if (!this.caseInsensitive) return key;
+        const known = this.canonical.get(key.toLowerCase());
+        if (known !== undefined) return known;
+        const slash = key.lastIndexOf('/');
+        if (slash < 0) return key;
+        return this.resolveKey(key.slice(0, slash)) + key.slice(slash);
+    }
+
+    private remember(key: string): void {
+        if (this.caseInsensitive) this.canonical.set(key.toLowerCase(), key);
+    }
+
+    private forget(key: string): void {
+        if (this.caseInsensitive) this.canonical.delete(key.toLowerCase());
     }
 
     read(path: string): Uint8Array | null {
@@ -93,6 +125,7 @@ export class MemoryFs {
         const key = this.key(path);
         this.ensureParents(key);
         this.files.set(key, data);
+        this.remember(key);
     }
 
     exists(path: string): boolean {
@@ -110,8 +143,11 @@ export class MemoryFs {
 
     remove(path: string): boolean {
         const key = this.key(path);
-        if (this.files.delete(key)) return true;
-        return this.dirs.delete(key);
+        if (this.files.delete(key) || this.dirs.delete(key)) {
+            this.forget(key);
+            return true;
+        }
+        return false;
     }
 
     rename(from: string, to: string): boolean {
@@ -119,6 +155,7 @@ export class MemoryFs {
         const data = this.files.get(fromKey);
         if (!data) return false;
         this.files.delete(fromKey);
+        this.forget(fromKey);
         this.write(to, data);
         return true;
     }
@@ -127,6 +164,7 @@ export class MemoryFs {
         const key = this.key(path);
         this.ensureParents(key);
         this.dirs.add(key);
+        this.remember(key);
     }
 
     /** Імена безпосередніх нащадків каталогу. */
@@ -155,6 +193,8 @@ export class MemoryFs {
         this.files.clear();
         this.dirs.clear();
         this.dirs.add('');
+        this.canonical.clear();
+        this.canonical.set('', '');
     }
 
     private ensureParents(key: string): void {
@@ -164,6 +204,7 @@ export class MemoryFs {
         for (const part of parts) {
             current = current === '' ? part : current + '/' + part;
             this.dirs.add(current);
+            this.remember(current);
         }
     }
 }
@@ -179,7 +220,8 @@ export class Vfs {
     private readonly mounts = new Map<MountPoint, MemoryFs>();
 
     constructor() {
-        for (const point of MOUNT_POINTS) this.mounts.set(point, new MemoryFs());
+        // /sd — FAT, нечутлива до регістру; /spiffs і /tmp — чутливі
+        for (const point of MOUNT_POINTS) this.mounts.set(point, new MemoryFs(point === '/sd'));
     }
 
     mount(point: MountPoint): MemoryFs {

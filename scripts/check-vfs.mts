@@ -256,5 +256,21 @@ const ok = (cond: boolean, msg: string) => {
     ok(info?.width === 280 && info?.height === 240, 'розміри визначено правильно');
 }
 
+// SD-карта — FAT: регістр імені зберігається, але для пошуку не важить.
+// lilweather з каталогу робить require("JSON") поруч із json.lua і на залізі
+// працює. SPIFFS регістр розрізняє.
+{
+    const vfs = new Vfs();
+    const bytes = new TextEncoder().encode('x');
+    vfs.write('/sd/app/json.lua', bytes);
+    ok(vfs.read('/sd/APP/JSON.lua') !== null, 'FAT: файл знаходиться в іншому регістрі');
+    ok(vfs.exists('/sd/App'), 'FAT: тека знаходиться в іншому регістрі');
+    vfs.write('/sd/APP/Json.LUA', new TextEncoder().encode('y'));
+    ok(JSON.stringify(vfs.list('/sd/app')) === '["json.lua"]', `FAT: перезапис зберігає первісне ім'я: ${JSON.stringify(vfs.list('/sd/app'))}`);
+    ok(new TextDecoder().decode(vfs.read('/sd/app/json.lua')!) === 'y', 'FAT: перезапис іншим регістром пише в той самий файл');
+    vfs.write('/spiffs/a.txt', bytes);
+    ok(vfs.read('/spiffs/A.TXT') === null, 'SPIFFS: регістр розрізняється');
+}
+
 console.log(fails === 0 ? '✔ файлова система: усі перевірки пройдено' : `✖ файлова система: ${fails} перевірок не пройдено`);
 process.exit(fails ? 1 : 0);

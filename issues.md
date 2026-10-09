@@ -124,3 +124,61 @@ report upstream (the emulator reproduces it, or cannot).
 - [fw] **F5. Device serial output drops ~20-byte chunks under bursts** and the
   log wrapper treats printed text as a printf format (`%` disappears) and cuts
   lines at ~250 characters.
+
+## Catalog check (catalog.lilka.dev, 2026-10-09)
+
+All 32 Lua entries of `lilka-dev/catalog` (15 apps, 17 wallpapers) were
+downloaded with their extra files and run:
+
+- **on the device** through Lua live, with a harness that runs each script
+  from its own folder `/sd/ctest/<app>` (like the file runner: relative paths,
+  `require`, `state.save`), turns errors into log lines instead of alerts, and
+  stops after 6 s. Wallpapers run in the launcher's restricted environment
+  (`LuaWallpaper::open`: no `util`, `controller`, `gpio`, `buzzer`… and an
+  empty `lilka`) with its frame loop. The screen was captured at 3.5 s through
+  the lcdtap. The test folder was removed afterwards.
+- **in the IDE runtime** the way a user runs them: files on the virtual SD
+  card, ~3 s, last frame captured.
+
+| Result | Device | IDE |
+|---|---|---|
+| 2048, LIlkaChuVaChi, LilkaCubes, gues-number, repeat-game, snake, stopwatch, tic-tac-toe, timer | runs | runs, same picture |
+| aquarium, boids, campfire, home-assistant, iss-tracker, kyiv-metro, living-window, pet-cat, rain, starfield, synthwave | runs | runs, same picture (animation/time differ) |
+| air-raid-alerts, currency, github-contributions, weather | runs, real data over Wi‑Fi | runs, "Wi‑Fi не під'єднано" (no network in IDE) |
+| lilweather | runs | **was a black screen** — fixed (C1); now stops at missing `http` |
+| asteroids | **fails**: `module 'modules.data' not found` | fails the same way |
+| matrix-rain | **fails as wallpaper**: `controller` is nil | runs (C2) |
+| lilwatchface | **fails as wallpaper**: `gpio` is nil | fails: no `gpio` (#10) |
+| HC-SR04P, bmp280, lightmeter, сapacitive-soil-sensor | not run (they drive GPIO 12–14; skipped on request) | fail: no `gpio` (#10) |
+
+Everywhere the inputs are the same, the device and the IDE draw the same
+thing — text, fonts, colors, shapes and images.
+
+### Web IDE
+
+- [x] **C1. The SD card is case-insensitive on hardware (FAT), the IDE's was
+  not.** lilweather does `require("JSON")` next to `json.lua`: works on the
+  device, failed in the IDE. `/sd` in the virtual file system is now
+  case-insensitive and case-preserving; `/spiffs` stays case-sensitive.
+  Locked down in `check:vfs`.
+- [ ] **C2. No wallpaper mode.** The IDE runs a wallpaper as an app, with the
+  full API. On the device the launcher gives wallpapers only `display`,
+  `colors`, `resources`, `math`, `geometry`, `ws2812`, `sdcard`, `fs`, `wifi`,
+  `http`, `audio`, `mqtt`, `net`, `state` and an empty `lilka`, and needs only
+  `lilka.draw`. So matrix-rain works in the IDE and is broken as a wallpaper;
+  pet-cat and home-assistant also look different (they detect the mode). A
+  "run as wallpaper" option would catch this.
+- [ ] **C3. `gpio` (#10) blocks 5 catalog entries** in the IDE, including a
+  wallpaper (lilwatchface reads the battery with `gpio.analog_read`).
+- [ ] **C4. No network in the IDE** — 5 entries show their offline screen.
+
+### Catalog / app authors
+
+- [fw] **K1. asteroids is packaged without its files.** The manifest has only
+  `asteroids.lua`, but it `require`s `modules/data`, `ship`, `bullet`,
+  `asteroid` and loads `resources/*.bmp`. Installed from the catalog, it fails
+  at line 35 on the device.
+- [fw] **K2. matrix-rain doesn't work as a wallpaper** — `lilka.update` calls
+  `controller.get_state()`, which the launcher doesn't provide.
+- [fw] **K3. lilwatchface doesn't work as a wallpaper** — it calls
+  `gpio.analog_read`, which the launcher doesn't provide.
