@@ -261,6 +261,10 @@ export class LilkaDevice {
         this.onFileWrite?.(path, data);
     }
 
+    hasFont(name: string): boolean {
+        return this.fonts.has(name);
+    }
+
     font(name: string): Font {
         const font = this.fonts.get(name);
         if (!font) {

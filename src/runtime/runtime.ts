@@ -130,7 +130,7 @@ export class LuaRuntime {
         // lualilka_state_load викликається ще до luaL_loadfile. Раніше це
         // робила преамбула, тобто на етапі prepare(), коли віртуальної карти
         // ще немає, і збережений стан не відновлювався ніколи.
-        engine.doStringSync('__lilka_load_state()');
+        engine.doStringSync('__lilka.load_state()');
 
         try {
             // Послідовність узята з AbstractLuaRunnerApp::execute():
@@ -143,7 +143,7 @@ export class LuaRuntime {
             device.queueDraw();
             device.canvas.fillScreen(0);
 
-            const reason = engine.doStringSync('return __lilka_main()') as string;
+            const reason = engine.doStringSync('return __lilka.main()') as string;
             return { reason: reason === 'no-loop' ? 'no-loop' : 'stopped' };
         } catch (error) {
             if (isExit(error)) return { reason: 'exit' };
@@ -166,7 +166,7 @@ export class LuaRuntime {
      */
     private saveState(): void {
         try {
-            this.engine?.doStringSync('__lilka_save_state()');
+            this.engine?.doStringSync('__lilka.save_state()');
         } catch (error) {
             this.options.onPrint('⚠ не вдалося зберегти state: ' + describe(error));
         }

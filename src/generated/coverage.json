@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-08-26T12:35:43.363Z",
+  "generatedAt": "2026-10-09T10:46:09.333Z",
   "totals": {
     "functions": 181,
-    "implemented": 118,
+    "implemented": 122,
     "stubs": 1,
-    "inScopeFunctions": 119,
-    "inScopeImplemented": 118
+    "inScopeFunctions": 123,
+    "inScopeImplemented": 122
   },
   "namespaces": [
     {
@@ -33,6 +33,13 @@
       "name": "controller",
       "total": 1,
       "done": 1,
+      "stub": 0,
+      "missing": []
+    },
+    {
+      "name": "crypto",
+      "total": 4,
+      "done": 4,
       "stub": 0,
       "missing": []
     },
@@ -133,19 +140,6 @@
       "done": 6,
       "stub": 1,
       "missing": []
-    },
-    {
-      "name": "crypto",
-      "total": 4,
-      "done": 0,
-      "stub": 0,
-      "missing": [
-        "crc32",
-        "decrypt",
-        "encrypt",
-        "md5"
-      ],
-      "note": "не пріоритет"
     },
     {
       "name": "gpio",

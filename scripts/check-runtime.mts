@@ -132,8 +132,10 @@ async function runWithVfs(scriptPath: string, code: string, files: Array<[string
         output[1] === 'nil\tnil\tnil\tnil',
         `на Лілці math замінено, стандартних полів немає: "${output[1]}"`,
     );
+    // math.pi на залізі — float, і друкується через "%.7g" (LUA_32BITS):
+    // звірено зі справжньою Лілкою, print(math.pi) там дає 3.141593
     ok(
-        output[2] === '-3\t9.0\t3.1415926535898',
+        output[2] === '-3\t9.0\t3.141593',
         `round(-2.5) = -3 (roundf, від нуля), max бере таблицю: "${output[2]}"`,
     );
 }
@@ -584,6 +586,104 @@ async function runWithVfs(scriptPath: string, code: string, files: Array<[string
     let painted = 0;
     for (const value of both.pixels) if (value !== 0) painted++;
     ok(painted > 60000, `з обома колбеками екран залито: ${painted} пікселів`);
+}
+
+// 25. Звірка зі справжньою Лілкою (Lua live + lcdtap, 2026-10-09). Кожне
+//     очікуване значення нижче отримано на залізі, а не виведено з коду.
+//     Lua прошивки — LUA_32BITS: lua_Number там float, і результати math
+//     обрізаються до float після кожної операції C.
+{
+    const { output } = await runScript(`
+        local function bits(x) return string.format("%.17g", x) end
+        print(bits(math.pi), bits(math.e), bits(math.tau))
+        print(bits(math.cos(1)), bits(math.avg({1, 2, 4})), bits(math.deg(1)), bits(math.rad(180)))
+        print(bits(math.map(3, 0, 7, 0, 100)), bits(math.dist(1, 2, 4.5, -1)))
+        local a, b = math.norm(3, 4)
+        print(bits(a), bits(b))
+        print(math.round(35 * math.cos(math.rad(60))))
+        print(100 / 3, 2 ^ 24, 1e100, 0.1 + 0.2)
+    `);
+    ok(
+        output[0] === '3.1415927410125732\t2.7182817459106445\t6.2831854820251465',
+        `константи math — float з заліза: "${output[0]}"`,
+    );
+    ok(
+        output[1] === '0.54030227661132812\t2.3333332538604736\t57.295780181884766\t3.1415927410125732',
+        `cos, avg, deg, rad — біт у біт як на залізі: "${output[1]}"`,
+    );
+    ok(output[2] === '42.857143402099609\t4.6097722053527832', `map і dist у float: "${output[2]}"`);
+    ok(output[3] === '0.60000002384185791\t0.80000001192092896', `norm у float: "${output[3]}"`);
+    // На залізі кінець цієї лінії — 17, у double вийшло б 18: один піксель
+    ok(output[4] === '17', `round(35 * cos(rad(60))) = 17, як на залізі: "${output[4]}"`);
+    // LUAI_NUMFFORMAT "%.7g": 1e100 у float — inf
+    ok(output[5] === '33.33333\t1.677722e+07\tinf\t0.3', `числа друкуються як float "%.7g": "${output[5]}"`);
+}
+
+// 26. Помилки аргументів — тексти й позиції з заліза (lang_uk.h, luaL_check*)
+{
+    const { output } = await runScript(`
+        local function try(f) local ok, e = pcall(f); print(e) end
+        try(function() local x = math.atan(1, 2) end)
+        try(function() local x = math.max(1, 5, 3) end)
+        try(function() local x = math.clamp() end)
+        try(function() local x = math.random(1.5, 3.5) end)
+        try(function() local x = display.color565(255) end)
+        try(function() local x = display.fill_rect("a") end)
+        try(function() local x = math.avg({}) end)
+        try(function() local x = display.fill_screen(1.5) end)
+        try(function() local x = string.format("%d", 3.5) end)
+        try(function() local x = ("%d"):format("z") end)
+        try(function() local x = display.set_font("nope") end)
+        try(function() local x = geometry.intersect_aabb(1, 2, 3) end)
+    `);
+    const expected = [
+        'main.lua:3: Очікується 1 аргумент, отримано 2',
+        'main.lua:4: Очікується 1 аргумент, отримано 3',
+        'main.lua:5: Очікується 3 аргументи, отримано 0',
+        "main.lua:6: bad argument #1 to 'random' (number has no integer representation)",
+        "main.lua:7: bad argument #2 to 'color565' (number expected, got no value)",
+        "main.lua:8: bad argument #1 to 'fill_rect' (number expected, got string)",
+        'main.lua:9: Таблиця не може бути пустою',
+        "main.lua:10: bad argument #1 to 'fill_screen' (number has no integer representation)",
+        "main.lua:11: bad argument #2 to 'format' (number has no integer representation)",
+        "main.lua:12: bad argument #1 to 'format' (number expected, got string)",
+        'main.lua:13: Невідомий шрифт - nope',
+        'main.lua:14: Очікується 8 аргументів, отримано 3',
+    ];
+    expected.forEach((line, i) => ok(output[i] === line, `помилка як на залізі: "${output[i]}" ≠ "${line}"`));
+}
+
+// 27. Поведінка API, перевірена на залізі: значення, які легко «виправити»
+{
+    const { output } = await runScript(`
+        -- intersect_lines повертає лише boolean, і через знак у формулі u
+        -- навіть явний перетин діагоналей дає false (lualilka_geometry.cpp)
+        print(geometry.intersect_lines(0, 0, 10, 10, 0, 10, 10, 0), geometry.intersect_lines(0, 0, 3, 7, 1, 5, 4, -2))
+        -- get_matrix: lua_pushinteger — дріб відкидається
+        local m = transforms.new():rotate(30):get()
+        local s = transforms.new():scale(2, 3):rotate(45):get()
+        print(m[1][1], m[1][2], m[2][1], m[2][2], s[1][1], s[1][2], s[2][1], s[2][2])
+        -- gain плеєра до першого відтворення
+        print(audio.get_volume())
+        local st = controller.get_state()
+        print(type(st.a), type(notes), notes.A4)
+        print(crypto.crc32("hello"), crypto.md5("hello"), crypto.crc32("\\255\\255"))
+        local k = "0123456789abcdef"
+        print(crypto.decrypt(crypto.encrypt("hi\\0\\255", k), k) == "hi\\0\\255", #crypto.encrypt(k, k))
+        print(select(2, pcall(crypto.encrypt, "x", "key")))
+        print(rawget(_G, "__api"), rawget(_G, "Promise"), rawget(_G, "null"), rawget(_G, "sandbox"), rawget(_G, "__lilka_main"))
+    `);
+    ok(output[0] === 'false\tfalse', `intersect_lines — boolean з вадою прошивки: "${output[0]}"`);
+    ok(output[1] === '0\t0\t0\t0\t1\t-2\t1\t2', `Transform:get відкидає дріб: "${output[1]}"`);
+    ok(output[2] === '-1.0', `audio.get_volume без відтворення = -1.0: "${output[2]}"`);
+    ok(output[3] === 'table\ttable\t440', `кнопки й notes — таблиці: "${output[3]}"`);
+    ok(
+        output[4] === '907060870\t5d41402abc4b2a76b9719d911017c592\t-65536',
+        `crc32/md5 як на залізі, crc32 знаковий: "${output[4]}"`,
+    );
+    ok(output[5] === 'true\t96', `encrypt/decrypt: байти цілі, IV + доповнення: "${output[5]}"`);
+    ok(output[6] === 'Ключ має бути 16, 24 або 32 байти, отримано 3', `перевірка ключа: "${output[6]}"`);
+    ok(output[7] === 'nil\tnil\tnil\tnil\tnil', `у _G немає службових імен: "${output[7]}"`);
 }
 
 console.log(fails === 0 ? '✔ рантайм: усі перевірки пройдено' : `✖ рантайм: ${fails} перевірок не пройдено`);

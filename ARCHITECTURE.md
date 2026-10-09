@@ -211,6 +211,8 @@ the code**.
 | `fonts/*.json` — 9 fonts with glyph bitmaps | `gen-fonts.mjs` | `u8g2/csrc/u8g2_fonts.c` |
 | `fmath-tables.ts` — sin360, sin32 | `gen-fmath.mjs` | `sdk/lilka/fmath.cpp` |
 | `notes.ts` — 97 notes | `gen-notes.mjs` | `sdk/lilka/buzzer.h` |
+| `firmware-strings.ts` — 75 Lua error texts | `gen-strings.mjs` | `keira/src/keira/localizations/lang_uk.h` |
+| `newlib-libm.ts` — fdlibm float constants and tables | `gen-libm.mjs` | `espressif/newlib-esp32` (esp-2021r2) `libm/math/*.c`, `fdlibm.h` |
 | `icons.ts` — 12 icons: keyboard and files | `gen-icons.mjs` | `sdk/lilka/icons/*.h`, `keira/src/apps/icons/*.h` |
 | `coverage.json` — API coverage report | `gen-coverage.mts` | running the real runtime |
 | `completions.ts` — 253 editor hints | `gen-completions.mjs` | `lilka-api.json` |
@@ -434,6 +436,72 @@ Locked down by checks 18 and 19 in `check-runtime`.
 
 **Windows are divided into eighths of the screen** (`height/8`), rather than
 having fixed sizes. The title uses 6x13 at double size, the body 9x15.
+
+### Checked against a real Lilka
+
+The items below were found on 2026-10-09 by running the same scripts on a
+real Lilka ("Lua live") and in the emulator, and comparing the frames
+captured from the display bus with an lcdtap pixel by pixel. Drawing and
+text already matched to the pixel; the differences were all in the Lua
+layer. Checks 25–27 in `check-runtime` hold them in place. The full list,
+including firmware bugs to report, is in `issues.md`.
+
+**Lua on Lilka is 32-bit.** Keira's Lua (`mischief/lua`) is built with
+`LUA_32BITS`: `lua_Number` is `float`, `lua_Integer` is `int32`. So
+`math.pi` is `3.1415927410125732`, every `math.*` result is a float after
+each C operation, and `print` formats floats with `%.7g` (`print(100/3)`
+gives `33.33333`, `1e100` gives `inf`). This flips rounding:
+`math.round(35 * math.cos(math.rad(60)))` is 17 on hardware, 18 in 64-bit
+Lua — a line one pixel shorter. The emulator reproduces it at every API
+boundary and in `tostring`/`print`/`string.format("%s")`. What it **cannot**
+reproduce without a 32-bit Lua build: arithmetic inside the script
+(`0.1 + 0.2` is computed in double), number-to-string in `..`
+concatenation, and int32 overflow (`1 << 63` is `0` on hardware).
+
+**`sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `log` are newlib's
+fdlibm, not `Math.*`.** On Xtensa newlib builds with `__OBSOLETE_MATH = 1`, so
+`math.sin` is fdlibm's `sinf` — which is *not* always correctly rounded:
+`cos(rad(30))` comes out one ulp high, and `math.round(35 *
+math.sin(math.rad(210)))` is -18 on hardware, not -17. A second ingredient is
+needed for a bit-exact match: GCC fuses `c + a*b` and `c - a*b` into the
+FPU's single-rounding `madd.s`/`msub.s` (but can't fuse `a*b - c`).
+`src/emulator/libm.ts` ports the algorithms with exactly those fusions, and
+the constants come from `gen-libm.mjs`. Checked against 774 values printed
+by the device (`scripts/fixtures/lilka-libm.json`, `check:libm`): all match
+bit for bit. **`pow` doesn't**: 54 of 60 match, the rest are one ulp off, and
+neither fdlibm's `powf` nor correct rounding explains which — still open.
+
+**Arguments are checked like `luaL_check*`.** `display.fill_rect("a")`
+fails with `bad argument #1 to 'fill_rect' (number expected, got string)`,
+colors must be integers (`fill_screen(1.5)` fails), and `math.*` checks the
+exact argument count first (`math.atan(1, 2)` fails with "Очікується 1
+аргумент, отримано 2"). The texts come from `lang_uk.h` via
+`gen-strings.mjs`. One gap: when the call is a tail call
+(`return display.fill_rect("a")`), the emulator's message has no
+`main.lua:N:` position, because the Lua wrapper's tail call drops the
+caller's frame.
+
+**`geometry.intersect_lines` returns only a boolean** — and because of a
+sign error in its formula for `u`, it returns `false` even for two crossing
+diagonals. **`Transform:get()` truncates the matrix to integers**
+(`lua_pushinteger`), so after `rotate(30)` it's all zeros.
+**`audio.get_volume()` is the player's gain**, `-1.0` until something has
+played, not a 0–100 volume.
+
+**`crypto` exists** (CRC-32, MD5, AES-CBC with a random IV in front and
+PKCS7 padding, hex output), and `crc32` comes back **signed** because
+`lua_Integer` is 32-bit.
+
+**`controller.get_state()` buttons and `notes` are real tables**, and `_G`
+has no emulator internals (`__api`, `Promise`, `null`, `sandbox`): a script
+that iterates `_G` sees what it would see on hardware. The runtime reaches
+its own entry points through `__lilka`, which is visible only via `_G`'s
+`__index`, not via `pairs`.
+
+**"Lua live" leaks canvas state into the script**: the text boundary
+(8 px margins) and font of its "waiting for code" screen, and the text color
+the previous script left. A script run from a file doesn't have this; the
+emulator follows the file runner.
 
 ---
 

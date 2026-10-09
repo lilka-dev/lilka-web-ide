@@ -15,6 +15,9 @@ import { Transform } from '../emulator/transform.ts';
 import { fCos360, fSin360 } from '../emulator/fmath.ts';
 import { NOTES } from '../generated/notes.ts';
 import { Image, NO_TRANSPARENT_COLOR } from '../emulator/image.ts';
+import { crc32, md5, aesCbcEncrypt, aesCbcDecrypt } from '../emulator/crypto.ts';
+import { sinf, cosf, tanf, asinf, acosf, atanf, atan2f, logf, powf } from '../emulator/libm.ts';
+import { FIRMWARE_STRINGS } from '../generated/firmware-strings.ts';
 import { Alert, InputDialog, ProgressDialog } from '../emulator/widgets.ts';
 import type { ButtonName } from '../emulator/controller.ts';
 import type { LilkaDevice } from './device.ts';
@@ -163,6 +166,7 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
         // display.print доклеюється в преамбулі: рядки має формувати Lua
         __print: (s: string) => text().write(s),
         __size: () => [fb().width, fb().height],
+        __has_font: (name: string) => device.hasFont(String(name)),
     };
 
     implemented.add('display.print');
@@ -194,107 +198,133 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
      * який на них спирається, працює у звичайній Lua і падає на залізі —
      * саме тому емулятор мусить поводитися так само.
      *
-     * Аргументи в прошивці читаються як `float`, тому кожен вхід
-     * округлюється через `Math.fround`. Обчислення далі йдуть у double, як і
-     * в C, де `sin(float)` підвищується до double.
+     * Арифметика тут — арифметика float, крок за кроком. Lua прошивки зібрана
+     * з `LUA_32BITS` (mischief/lua, luaconf.h), тож `lua_Number` — це `float`:
+     * кожен аргумент приходить float, кожна операція `float * float` у C дає
+     * float, а `lua_pushnumber` ще раз обрізає результат до float. `f()` після
+     * кожної операції відтворює саме це. Звірено з залізом: 26 із 27 значень
+     * збігаються до біта; тригонометрія й log — після порту newlib (libm.ts).
+     *
+     * Кількість аргументів і їхні типи перевіряє преамбула: помилки мусять
+     * мати позицію виклику в скрипті, а її знає лише Lua.
      */
-    const num = Math.fround;
-    const table = (t: unknown): number[] => {
-        const values = Object.values(t as Record<string, number>).map(num);
-        if (values.length === 0) throw new Error('Очікувалася непорожня таблиця чисел');
-        return values;
-    };
+    const f = Math.fround;
+    // Таблиця Lua приходить проксі-об'єктом; послідовність уже зібрала преамбула
+    const seq = (t: unknown): number[] => Object.values(t as Record<string, number>).map(Number);
+    const fsqrt = (v: number) => f(Math.sqrt(f(v)));
 
     const mathApi = {
-        // Arduino random(): з одним аргументом 0..max-1, з двома min..max-1.
-        // Верхня межа НЕ включається — на відміну від math.random у звичайній Lua.
+        // `random()` без аргументів — `(float)rand() / RAND_MAX`, з аргументами
+        // — Arduino random(): верхня межа НЕ включається, на відміну від Lua.
         random: impl('math.random', (a?: number, b?: number) => {
-            if (a === undefined) return Math.random();
+            if (a === undefined) return f(Math.random());
             if (b === undefined) return Math.floor(Math.random() * Math.trunc(a));
             const lo = Math.trunc(a);
             const hi = Math.trunc(b);
             return lo + Math.floor(Math.random() * (hi - lo));
         }),
         clamp: impl('math.clamp', (v: number, lo: number, hi: number) => {
-            const x = num(v);
-            return x < num(lo) ? num(lo) : x > num(hi) ? num(hi) : x;
+            const x = f(v);
+            return x < f(lo) ? f(lo) : x > f(hi) ? f(hi) : x;
         }),
-        lerp: impl('math.lerp', (a: number, b: number, t: number) => num(a) + (num(b) - num(a)) * num(t)),
+        // a + (b - a) * t — три операції float
+        lerp: impl('math.lerp', (a: number, b: number, t: number) => f(f(a) + f(f(f(b) - f(a)) * f(t)))),
         map: impl('math.map', (v: number, i1: number, i2: number, o1: number, o2: number) =>
-            ((num(v) - num(i1)) * (num(o2) - num(o1))) / (num(i2) - num(i1)) + num(o1),
+            f(f(f(f(f(v) - f(i1)) * f(f(o2) - f(o1))) / f(f(i2) - f(i1))) + f(o1)),
         ),
-        abs: impl('math.abs', (v: number) => Math.abs(num(v))),
+        abs: impl('math.abs', (v: number) => Math.abs(f(v))),
         // Прошивка кладе аргумент у int ДО порівняння:
         // `int value = luaL_checknumber(L, 1)`. Тому math.sign(0.5) там 0, а
         // не 1 — дріб відкидається у бік нуля разом зі знаком.
-        sign: impl('math.sign', (v: number) => Math.sign(Math.trunc(num(v)))),
-        sqrt: impl('math.sqrt', (v: number) => Math.sqrt(num(v))),
-        pow: impl('math.pow', (base: number, exp: number) => Math.pow(num(base), num(exp))),
-        min: impl('math.min', (t: unknown) => Math.min(...table(t))),
-        max: impl('math.max', (t: unknown) => Math.max(...table(t))),
-        sum: impl('math.sum', (t: unknown) => table(t).reduce((a, b) => a + b, 0)),
+        sign: impl('math.sign', (v: number) => Math.sign(Math.trunc(f(v)))),
+        sqrt: impl('math.sqrt', (v: number) => fsqrt(v)),
+        pow: impl('math.pow', (base: number, exp: number) => powf(base, exp)),
+        min: impl('math.min', (t: unknown) => f(Math.min(...seq(t).map(f)))),
+        max: impl('math.max', (t: unknown) => f(Math.max(...seq(t).map(f)))),
+        // Сума накопичується у float — і в avg теж, до ділення
+        sum: impl('math.sum', (t: unknown) => seq(t).reduce((acc, v) => f(acc + f(v)), 0)),
         avg: impl('math.avg', (t: unknown) => {
-            const values = table(t);
-            return values.reduce((a, b) => a + b, 0) / values.length;
+            const values = seq(t);
+            return f(values.reduce((acc, v) => f(acc + f(v)), 0) / values.length);
         }),
-        floor: impl('math.floor', (v: number) => Math.floor(num(v))),
-        ceil: impl('math.ceil', (v: number) => Math.ceil(num(v))),
+        floor: impl('math.floor', (v: number) => Math.floor(f(v))),
+        ceil: impl('math.ceil', (v: number) => Math.ceil(f(v))),
         // roundf округлює половину ВІД нуля: -2.5 -> -3, а Math.round дав би -2
         round: impl('math.round', (v: number) => {
-            const x = num(v);
+            const x = f(v);
             return Math.sign(x) * Math.round(Math.abs(x));
         }),
-        sin: impl('math.sin', (v: number) => Math.sin(num(v))),
-        cos: impl('math.cos', (v: number) => Math.cos(num(v))),
-        tan: impl('math.tan', (v: number) => Math.tan(num(v))),
-        asin: impl('math.asin', (v: number) => Math.asin(num(v))),
-        acos: impl('math.acos', (v: number) => Math.acos(num(v))),
-        atan: impl('math.atan', (v: number) => Math.atan(num(v))),
-        atan2: impl('math.atan2', (y: number, x: number) => Math.atan2(num(y), num(x))),
+        // sinf/cosf/tanf і решта — порт fdlibm з newlib прошивки, а не Math.*:
+        // залізо округлює не завжди правильно, і це видно на пікселях
+        // (src/emulator/libm.ts). Звірено із залізом до біта; виняток — pow:
+        // 54 із 60 значень, решта на 1 ulp інша, і причину ще не знайдено.
+        sin: impl('math.sin', (v: number) => sinf(v)),
+        cos: impl('math.cos', (v: number) => cosf(v)),
+        tan: impl('math.tan', (v: number) => tanf(v)),
+        asin: impl('math.asin', (v: number) => asinf(v)),
+        acos: impl('math.acos', (v: number) => acosf(v)),
+        atan: impl('math.atan', (v: number) => atanf(v)),
+        atan2: impl('math.atan2', (y: number, x: number) => atan2f(y, x)),
+        // log(float) — це logf; з основою: logf(value) / logf(base) у float
         log: impl('math.log', (v: number, base?: number) =>
-            base === undefined ? Math.log(num(v)) : Math.log(num(v)) / Math.log(num(base)),
+            base === undefined ? logf(v) : f(logf(v) / logf(base)),
         ),
-        deg: impl('math.deg', (v: number) => (num(v) * 180) / Math.PI),
-        rad: impl('math.rad', (v: number) => (num(v) * Math.PI) / 180),
-        len: impl('math.len', (x: number, y: number) => Math.sqrt(num(x) * num(x) + num(y) * num(y))),
+        // value * 180 — float, а ділення на M_PI (double) уже в double
+        deg: impl('math.deg', (v: number) => f(f(f(v) * 180) / Math.PI)),
+        // value * M_PI — одразу double, і лише результат обрізається до float
+        rad: impl('math.rad', (v: number) => f((f(v) * Math.PI) / 180)),
+        len: impl('math.len', (x: number, y: number) => fsqrt(f(f(f(x) * f(x)) + f(f(y) * f(y))))),
         dist: impl('math.dist', (x1: number, y1: number, x2: number, y2: number) => {
-            const dx = num(x2) - num(x1);
-            const dy = num(y2) - num(y1);
-            return Math.sqrt(dx * dx + dy * dy);
+            const dx = f(f(x2) - f(x1));
+            const dy = f(f(y2) - f(y1));
+            return fsqrt(f(f(dx * dx) + f(dy * dy)));
         }),
         __norm: impl('math.norm', (x: number, y: number) => {
-            const fx = num(x);
-            const fy = num(y);
-            const length = Math.sqrt(fx * fx + fy * fy);
-            return [fx / length, fy / length];
+            const fx = f(x);
+            const fy = f(y);
+            const length = fsqrt(f(f(fx * fx) + f(fy * fy)));
+            return [f(fx / length), f(fy / length)];
         }),
         // Обертання тут — через таблиці прошивки, і БЕЗ відкидання дробу:
         // на відміну від Transform, math.rotate повертає дробові числа
         __rotate: impl('math.rotate', (x: number, y: number, angle: number) => {
-            const c = fCos360(angle);
-            const s = fSin360(angle);
-            const fx = num(x);
-            const fy = num(y);
-            return [fx * c - fy * s, fx * s + fy * c];
+            const c = f(fCos360(f(angle)));
+            const s = f(fSin360(f(angle)));
+            const fx = f(x);
+            const fy = f(y);
+            return [f(f(fx * c) - f(fy * s)), f(f(fx * s) + f(fy * c))];
         }),
+        // Константи прошивки — M_PI, M_E, M_PI * 2 після lua_pushnumber у float
+        __constants: () => [f(Math.PI), f(Math.E), f(Math.PI * 2)],
     };
 
+    /**
+     * geometry — дослівний порт lualilka_geometry.cpp, разом із його вадою.
+     *
+     * `intersect_lines` повертає ЛИШЕ boolean, а не точку перетину, і в
+     * формулі для `u` знак перевернутий. Через це на залізі перетин двох
+     * діагоналей (0,0)-(10,10) і (0,10)-(10,0) дає false — перевірено на
+     * справжній Лілці. Емулятор мусить відповідати так само, інакше гра, що
+     * працює в браузері, на залізі не бачитиме зіткнень.
+     */
     const geometry = {
-        __intersect_lines: impl(
+        intersect_lines: impl(
             'geometry.intersect_lines',
             (ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number) => {
-                const d = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx);
-                if (d === 0) return null;
-                const t = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / d;
-                const u = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / d;
-                if (t < 0 || t > 1 || u < 0 || u > 1) return null;
-                return [ax + t * (bx - ax), ay + t * (by - ay)];
+                [ax, ay, bx, by, cx, cy, dx, dy] = [ax, ay, bx, by, cx, cy, dx, dy].map(f);
+                const denominator = f(f(f(by - ay) * f(dx - cx)) - f(f(bx - ax) * f(dy - cy)));
+                if (denominator === 0) return false;
+                const t = f(f(f(f(cy - ay) * f(dx - cx)) - f(f(cx - ax) * f(dy - cy))) / denominator);
+                const u = f(-f(f(f(ay - by) * f(cx - ax)) - f(f(ax - bx) * f(cy - ay))) / denominator);
+                return t >= 0 && t <= 1 && u >= 0 && u <= 1;
             },
         ),
         intersect_aabb: impl(
             'geometry.intersect_aabb',
-            (ax: number, ay: number, aw: number, ah: number, bx: number, by: number, bw: number, bh: number) =>
-                ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by,
+            (ax: number, ay: number, aw: number, ah: number, bx: number, by: number, bw: number, bh: number) => {
+                [ax, ay, aw, ah, bx, by, bw, bh] = [ax, ay, aw, ah, bx, by, bw, bh].map(f);
+                return f(ax) < f(bx + bw) && f(ax + aw) > bx && ay < f(by + bh) && f(ay + ah) > by;
+            },
         ),
     };
 
@@ -668,29 +698,6 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
     // reset() цілком живе в преамбулі: він лише перечитує файл
     implemented.add('state.reset');
 
-    /**
-     * Тимчасове розширення, якого немає на залізі: створення зображення в
-     * пам'яті. Потрібне, доки немає файлової системи, і позначене окремим
-     * префіксом, щоб не переплутати з рідним API.
-     */
-    const sandbox = {
-        new_image: (w: number, h: number, transparent?: number) => {
-            const image = new Image(w, h, transparent ?? NO_TRANSPARENT_COLOR, 0, 0);
-            return imageHandle(device.images.add(image), image);
-        },
-        set_pixel: (handle: unknown, x: number, y: number, color: number) => {
-            const image = device.image(handle);
-            if (x >= 0 && y >= 0 && x < image.width && y < image.height) {
-                image.pixels[x + y * image.width] = color;
-            }
-        },
-        set_pivot: (handle: unknown, px: number, py: number) => {
-            const image = device.image(handle);
-            image.pivotX = px;
-            image.pivotY = py;
-        },
-    };
-
     const transforms = {
         __new: impl('transforms.new', () => transformHandle(new Transform())),
         __rotate: (m: number[], angle: number) => transformHandle(fromMatrix(m).rotate(angle)),
@@ -732,20 +739,63 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
     };
 
     /**
-     * Аудіо. Відтворення файлів потребує файлової системи, тож `play` поки
-     * заглушка. Решта — справжній стан гучності: гра, яка викликає
-     * `audio.stop()` або читає гучність, не має падати через це.
+     * Аудіо. Відтворення файлів поки заглушка.
+     *
+     * `get_volume` повертає не «гучність 0–100», а `AudioPlayer::gain` —
+     * float, який дорівнює -1, доки нічого не відтворювалося, і скидається в
+     * -1 при `cleanup()`. `set_volume` лише надсилає команду задачі плеєра,
+     * а без відтворення задачі немає, і команда нікуди не йде
+     * (`AudioPlayer::setGain`). Отже без звуку get_volume на залізі завжди
+     * -1.0 — перевірено на справжній Лілці.
      */
-    let volume = 100;
+    const audioGain = -1;
     const audio = {
         play: stub('audio.play', 'відтворення файлів потребує файлової системи'),
         stop: impl('audio.stop', () => hooks.sound({ kind: 'stop' })),
         pause: impl('audio.pause', () => hooks.sound({ kind: 'stop' })),
         resume: impl('audio.resume', () => {}),
         is_playing: impl('audio.is_playing', () => false),
-        get_volume: impl('audio.get_volume', () => volume),
-        set_volume: impl('audio.set_volume', (value: number) => {
-            volume = Math.trunc(value);
+        get_volume: impl('audio.get_volume', () => audioGain),
+        set_volume: impl('audio.set_volume', () => {}),
+    };
+
+    /**
+     * crypto — порт lualilka_crypto.cpp. Рядки Lua приходять сюди байтами
+     * (див. `__bytes` у преамбулі), бо шифротекст і довільні дані — не UTF-8.
+     */
+    const bytesOf = (t: unknown) => Uint8Array.from(Object.values(t as Record<string, number>));
+    const hexOf = (bytes: Uint8Array) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    const crypto = {
+        // lua_pushinteger від uint32 при 32-бітному lua_Integer — знакове число
+        crc32: impl('crypto.crc32', (data: unknown) => crc32(bytesOf(data)) | 0),
+        md5: impl('crypto.md5', (data: unknown) => hexOf(md5(bytesOf(data)))),
+        encrypt: impl('crypto.encrypt', (raw: unknown, rawKey: unknown) => {
+            const data = bytesOf(raw);
+            const key = bytesOf(rawKey);
+            // PKCS7: завжди хоча б один байт доповнення
+            const pad = 16 - (data.length % 16);
+            const padded = new Uint8Array(data.length + pad);
+            padded.set(data);
+            padded.fill(pad, data.length);
+            const iv = new Uint8Array(16);
+            globalThis.crypto.getRandomValues(iv);
+            return hexOf(iv) + hexOf(aesCbcEncrypt(key, iv, padded));
+        }),
+        // Повертає байти або код помилки прошивки; текст підставляє преамбула
+        decrypt: impl('crypto.decrypt', (hex: string, rawKey: unknown): number[] | string => {
+            const key = bytesOf(rawKey);
+            if (hex.length < 64 || hex.length % 2 !== 0) return 'CRYPTO_INVALID_DATA_FORMAT';
+            if (!/^[0-9a-fA-F]*$/.test(hex)) return 'CRYPTO_INVALID_HEX_STRING';
+            const bin = Uint8Array.from(hex.match(/../g) ?? [], (h) => parseInt(h, 16));
+            const body = bin.slice(16);
+            if (body.length === 0 || body.length % 16 !== 0) return 'CRYPTO_INVALID_DATA_SIZE';
+            const plain = aesCbcDecrypt(key, bin.slice(0, 16), body);
+            const pad = plain[plain.length - 1];
+            if (pad === 0 || pad > 16) return 'CRYPTO_INVALID_KEY_OR_DATA';
+            for (let i = plain.length - pad; i < plain.length; i++) {
+                if (plain[i] !== pad) return 'CRYPTO_INVALID_KEY_OR_DATA';
+            }
+            return Array.from(plain.slice(0, plain.length - pad));
         }),
     };
 
@@ -776,9 +826,10 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
             buzzer,
             audio,
             console,
-            sandbox,
+            crypto,
             ui,
             __notes: { ...NOTES },
+            __strings: { ...FIRMWARE_STRINGS },
             __running: () => hooks.running(),
             __millis: () => hooks.now(),
             __sleep_ms: (ms: number) => hooks.sleepMs(ms),
