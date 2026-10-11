@@ -157,5 +157,54 @@ function solid(size: number, color: number, transparent = NO_TRANSPARENT_COLOR, 
     ok(surface.canvas.getPixel(0, 0) === RED, 'програма малює поверх кадру, що був два кадри тому');
 }
 
+/*
+ * Обчислення редактора картинок.
+ *
+ * Канви під Node немає, тож саме малювання перевіряється очима в браузері. Але
+ * помилки живуть не в `drawImage`, а в арифметиці навколо нього — округленні
+ * пропорцій і заганянні рамки в межі. Саме вона й перевіряється тут.
+ */
+{
+    const edit = await import('../src/emulator/image-edit.ts');
+
+    // Поворот на 90° міняє сторони місцями
+    const rotated = edit.rotatedSize(256, 64);
+    ok(rotated.width === 64 && rotated.height === 256, `поворот міняє сторони: ${rotated.width}×${rotated.height}`);
+
+    // Пропорція: квадрат лишається квадратом
+    ok(edit.scaledSide(96, 96, 192) === 192, 'подвоєння квадрата');
+
+    // Неточна пропорція округлюється до найближчого, а не відкидається
+    ok(edit.scaledSide(50, 100, 75) === 38, `50 при 100→75 дає 38, а не 37: ${edit.scaledSide(50, 100, 75)}`);
+
+    // Найтонша картинка не зникає: щонайменше піксель
+    ok(edit.scaledSide(3, 100, 10) === 1, `дуже тонка сторона лишається 1: ${edit.scaledSide(3, 100, 10)}`);
+
+    // Прилипання до цілої кратності — щоб піксель-арт не сходинкував
+    ok(edit.nearestWholeScale(96, 190) === 2, 'майже подвоєння прилипає до ×2');
+    ok(edit.nearestWholeScale(96, 48) === 0.5, 'майже половина прилипає до ½');
+    ok(edit.nearestWholeScale(96, 150) === null, 'проміжний масштаб не прилипає');
+
+    // Рамка обрізання не виїжджає за межі картинки
+    const out = edit.clampCrop({ x: -10, y: -10, width: 999, height: 999 }, 64, 48);
+    ok(
+        out.x === 0 && out.y === 0 && out.width === 64 && out.height === 48,
+        `рамка заганяється в межі: ${out.x},${out.y} ${out.width}×${out.height}`,
+    );
+
+    // Рамка біля правого краю вкорочується, а не вилазить
+    const edge = edit.clampCrop({ x: 60, y: 40, width: 30, height: 30 }, 64, 48);
+    ok(edge.width === 4 && edge.height === 8, `рамка біля краю вкорочується: ${edge.width}×${edge.height}`);
+
+    // Порожньої рамки не буває
+    const tiny = edit.clampCrop({ x: 10, y: 10, width: 0, height: -5 }, 64, 48);
+    ok(tiny.width === 1 && tiny.height === 1, `найменша рамка — піксель: ${tiny.width}×${tiny.height}`);
+
+    // Результат завжди PNG, хоч би яким був первотвір
+    ok(edit.pngName('ship.bmp') === 'ship.png', 'BMP стає PNG');
+    ok(edit.pngName('photo.jpg') === 'photo.png', 'JPEG стає PNG');
+    ok(edit.pngName('no-extension') === 'no-extension.png', 'файл без розширення теж');
+}
+
 console.log(fails === 0 ? '✔ зображення: усі перевірки пройдено' : `✖ зображення: ${fails} перевірок не пройдено`);
 process.exit(fails ? 1 : 0);

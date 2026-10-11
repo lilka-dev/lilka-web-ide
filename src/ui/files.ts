@@ -242,6 +242,8 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
         label: string;
         run: () => void;
         kind?: 'accent' | 'danger' | 'fix';
+        /** Лише в дій над самою картинкою — див. пояснення в entryMenuItems. */
+        icon?: string;
     }
 
     function closeMenu(): void {
@@ -260,7 +262,11 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
             const row = document.createElement('button');
             row.type = 'button';
             row.className = `menu__item${item.kind ? ' menu__item--' + item.kind : ''}`;
-            row.textContent = item.label;
+            if (item.icon) {
+                row.classList.add('menu__item--icon');
+                row.append(iconElement(item.icon, 16));
+            }
+            row.append(document.createTextNode(item.label));
             row.addEventListener('click', () => {
                 closeMenu();
                 item.run();
@@ -290,6 +296,25 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
             items.push({ label: t('files.open'), kind: 'accent', run: () => setDir(entry.path) });
         } else if (entry.name.endsWith('.lua')) {
             items.push({ label: t('files.openInEditor'), kind: 'accent', run: () => events.onOpenLua(entry.path) });
+        }
+
+        /*
+         * Дії над картинкою.
+         *
+         * Поворот і дзеркало стоять просто в меню, бо вони оборотні: повернув
+         * не туди — повернув назад, і файл точно той самий. Розмір і
+         * обрізання незворотні, тож відкривають вікно з переглядом.
+         *
+         * Значки лише в цій групі: вони позначають дію, що змінює саму
+         * картинку, а не файл. Перейменуванню чи переміщенню значок нічого не
+         * додав би, крім шуму.
+         */
+        if (info) {
+            items.push({ label: t('image.rotateLeft'), icon: 'rotateLeft', run: () => void editImage(entry, 'rotate-left') });
+            items.push({ label: t('image.rotateRight'), icon: 'rotateRight', run: () => void editImage(entry, 'rotate-right') });
+            items.push({ label: t('image.mirror'), icon: 'mirror', run: () => void editImage(entry, 'mirror') });
+            items.push({ label: t('image.resize'), icon: 'resize', run: () => void editImage(entry, 'resize') });
+            items.push({ label: t('image.crop'), icon: 'crop', run: () => void editImage(entry, 'crop') });
         }
 
         items.push({
@@ -334,6 +359,66 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
             showNotice(t('files.fixedTo', { from: entry.name, to: fixed.name }), 'warn');
         } catch (error) {
             showNotice(t('files.fixFailed', { name: entry.name, error: String(error) }), 'error');
+        }
+    }
+
+    type ImageAction = 'rotate-left' | 'rotate-right' | 'mirror' | 'resize' | 'crop';
+
+    /**
+     * Виконує дію над картинкою.
+     *
+     * Поворот і дзеркало роблять свою справу одразу — вони оборотні, тож
+     * питати нема про що. Розмір і обрізання спершу відкривають вікно.
+     *
+     * Результат завжди PNG. Якщо розширення змінилося (був `.bmp` чи `.jpg`),
+     * старий файл лишається: він однаково міг бути потрібен деінде, а мовчки
+     * прибрати чуже — зле.
+     */
+    async function editImage(entry: FileEntry, action: ImageAction): Promise<void> {
+        if (!entry.data) return;
+
+        try {
+            const edit = await import('../emulator/image-edit.ts');
+            const save = (data: Uint8Array) => {
+                const name = edit.pngName(entry.name);
+                // Перемальовування запускає сам onAdd — так само, як у fixImage
+                events.onAdd(`${dirname(entry.path)}/${name}`, data);
+            };
+
+            if (action === 'rotate-left' || action === 'rotate-right') {
+                save(await edit.rotateImage(entry.data, action === 'rotate-left' ? 'left' : 'right'));
+                return;
+            }
+            if (action === 'mirror') {
+                save(await edit.mirrorImage(entry.data));
+                return;
+            }
+
+            // Далі — необоротне, тож через вікно з переглядом
+            const bytes = entry.data;
+            const bitmap = await edit.decodeImage(bytes);
+            const { openResizeDialog, openCropDialog } = await import('./image-dialogs.ts');
+
+            if (action === 'resize') {
+                openResizeDialog(entry.name, bitmap, (result) => {
+                    void edit
+                        .resizeImage(bytes, result.width, result.height)
+                        .then(save)
+                        .catch((error) => showNotice(t('image.failed', { name: entry.name, error: String(error) }), 'error'))
+                        .finally(() => bitmap.close());
+                });
+                return;
+            }
+
+            openCropDialog(entry.name, bitmap, (rect) => {
+                void edit
+                    .cropImage(bytes, rect)
+                    .then(save)
+                    .catch((error) => showNotice(t('image.failed', { name: entry.name, error: String(error) }), 'error'))
+                    .finally(() => bitmap.close());
+            });
+        } catch (error) {
+            showNotice(t('image.failed', { name: entry.name, error: String(error) }), 'error');
         }
     }
 

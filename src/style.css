@@ -1578,3 +1578,200 @@ body {
     align-items: center;
     gap: 6px;
 }
+
+/* ------------------------------------------- дії над зображенням ------- */
+
+/*
+ * Значок стоїть лише в тих пунктів меню, що змінюють саму картинку. Дії над
+ * файлом — перейменування, переміщення — лишаються без значків, щоб ті не
+ * перетворилися на тло.
+ */
+.menu__item--icon {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+}
+
+.menu__item--icon .icon {
+    color: var(--muted);
+    flex: none;
+}
+
+/* Пункти без значка вирівнюються по тексту тих, що зі значком */
+.menu__item:not(.menu__item--icon):not(.menu__item--fix) {
+    padding-left: 39px;
+}
+
+/* --------------------------------------------- вікна розміру й рамки --- */
+
+.dialog--image {
+    max-width: min(560px, calc(100vw - 32px));
+}
+
+.imgdlg__head {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+
+.imgdlg__name {
+    font-weight: 400;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.imgdlg__close {
+    appearance: none;
+    margin-left: auto;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 19px;
+    line-height: 1;
+    padding: 0 2px;
+    cursor: pointer;
+}
+
+/*
+ * Полотно. Картинка показується в натуральну величину — для спрайтів Лілки це
+ * саме те, що треба: екран пристрою всього 280×240, тож майже все вміщається
+ * без зменшення, і видно справжні пікселі.
+ */
+.imgdlg__stage {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 240px;
+    max-height: 56vh;
+    padding: 18px;
+    overflow: auto;
+    background:
+        repeating-conic-gradient(#edf2f0 0% 25%, #fbfdfc 0% 50%) 0 0 / 16px 16px;
+}
+
+/*
+ * Екран Лілки з заокругленими кутами, як на платі: 280×240, радіус 34.
+ * Затемнення назовні показує, що в кути не видно — спрайт, присунутий до
+ * самого кутка, втрачає до десяти пікселів по діагоналі.
+ */
+.imgdlg__screen {
+    position: absolute;
+    flex: none;
+    border: 1.5px dashed var(--amber, #f0a500);
+    box-shadow: 0 0 0 9999px rgba(242, 247, 244, 0.86);
+    pointer-events: none;
+    z-index: 2;
+}
+
+.imgdlg__frame,
+.imgdlg__crop-holder {
+    position: relative;
+    flex: none;
+}
+
+.imgdlg__frame {
+    /* box-shadow замість outline: дробову товщину outline браузер округлює
+       по-різному для різних сторін, і рамка виходить двоколірною */
+    box-shadow: 0 0 0 1.5px var(--amber, #f0a500);
+    z-index: 1;
+}
+
+.imgdlg__canvas {
+    display: block;
+    image-rendering: pixelated;
+}
+
+.imgdlg__handle {
+    position: absolute;
+    width: 11px;
+    height: 11px;
+    background: var(--amber, #f0a500);
+    border: 1.5px solid #fff;
+    border-radius: 2px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    z-index: 3;
+    touch-action: none;
+}
+
+.imgdlg__handle--nw { left: -6px; top: -6px; cursor: nwse-resize; }
+.imgdlg__handle--ne { right: -6px; top: -6px; cursor: nesw-resize; }
+.imgdlg__handle--sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
+.imgdlg__handle--se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+
+.imgdlg__controls {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 11px 14px;
+    border-top: 1px solid var(--edge);
+    flex-wrap: wrap;
+}
+
+/* Обидві сторони виглядають однаково — вводиться будь-яка, друга рахується */
+.imgdlg__field {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.imgdlg__field input {
+    width: 68px;
+    padding: 5px 9px;
+    font: inherit;
+    font-size: 12.5px;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    color: var(--ink);
+    background: #fff;
+    border: 1px solid var(--edge);
+    border-radius: 7px;
+}
+
+.imgdlg__field input:focus {
+    outline: none;
+    border-color: var(--teal);
+}
+
+/*
+ * Перемикач екрана без значка: за нашим же правилом значок позначає дію, що
+ * змінює картинку, а ця лише міняє перегляд. Типово вимкнений.
+ */
+.imgdlg__screen-toggle {
+    margin-left: auto;
+}
+
+.imgdlg__screen-toggle.is-on {
+    color: #0b5f53;
+    background: #eaf7f3;
+    border-color: #b9ded4;
+}
+
+/* --- обрізання */
+
+.imgdlg__crop-frame {
+    position: absolute;
+    cursor: move;
+    touch-action: none;
+    /* Перша тінь — сама рамка, друга пригашує все поза нею, щоб було видно
+       саме вибране. box-shadow замість outline: дробову товщину outline
+       браузер округлює по-різному для різних сторін. */
+    box-shadow:
+        0 0 0 1.5px var(--amber, #f0a500),
+        0 0 0 9999px rgba(251, 253, 252, 0.68);
+}
+
+.imgdlg__crop-size {
+    position: absolute;
+    left: 0;
+    bottom: -21px;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 10.5px;
+    color: var(--ink);
+    background: var(--amber, #f0a500);
+    padding: 2px 7px;
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+}

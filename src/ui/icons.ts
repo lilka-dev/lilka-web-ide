@@ -21,6 +21,32 @@ const SHEET = `
 `;
 
 const ICONS: Record<string, string> = {
+    /*
+     * Значки дій над зображенням. Стоять лише в тих пунктів меню, що
+     * змінюють саму картинку — дії над файлом лишаються без них.
+     */
+    rotateLeft: `
+        <path d="M12 4.8A7.2 7.2 0 1 0 19.2 12" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+        <path d="M13.4 1.6v6.4L8 4.8z" fill="currentColor"/>
+    `,
+    rotateRight: `
+        <path d="M12 4.8A7.2 7.2 0 1 1 4.8 12" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+        <path d="M10.6 1.6v6.4L16 4.8z" fill="currentColor"/>
+    `,
+    mirror: `
+        <path d="M12 2.6v18.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="2.6 3.2"/>
+        <path d="M9 6.4 3 12l6 5.6z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>
+        <path d="M15 6.4 21 12l-6 5.6z" fill="currentColor"/>
+    `,
+    resize: `
+        <path d="M6.4 17.6 17.6 6.4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M17.6 12.4V6.4h-6" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M6.4 11.6v6h6" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    `,
+    crop: `
+        <path d="M6 2.6v15.4h15.4" stroke="currentColor" stroke-width="2.1" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M2.6 6H18v15.4" stroke="currentColor" stroke-width="2.1" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    `,
     folder: `
         <path d="M2.5 6.2a1.7 1.7 0 0 1 1.7-1.7h4.6l1.9 2.2h7.6a1.7 1.7 0 0 1 1.7 1.7v9.9a1.7 1.7 0 0 1-1.7 1.7H4.2a1.7 1.7 0 0 1-1.7-1.7z" fill="${AMBER}"/>
         <path d="M2.5 9.3h19v9a1.7 1.7 0 0 1-1.7 1.7H4.2a1.7 1.7 0 0 1-1.7-1.7z" fill="#ffc24d"/>
