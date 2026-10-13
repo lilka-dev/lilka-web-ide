@@ -25,13 +25,13 @@ import {
     floodFill,
     fromRgba,
     getPixel,
-    hexTo565,
     inside,
     luaHex,
     toRgba,
     type PixelImage,
 } from '../emulator/pixel-art.ts';
 import { iconElement } from './icons.ts';
+import { createColorPicker } from './color-picker.ts';
 import { openModal, footerButton } from './modal.ts';
 
 type Tool = 'pencil' | 'eraser' | 'fill' | 'line' | 'rect' | 'rectFill' | 'picker';
@@ -315,16 +315,17 @@ export function openPixelEditor(options: {
 
     const current = document.createElement('div');
     current.className = 'pixed__current';
-    const swatch = document.createElement('label');
+    const swatch = document.createElement('div');
     swatch.className = 'pixed__swatch';
-    swatch.title = t('pixel.pickColor');
-    const colorInput = document.createElement('input');
-    colorInput.type = 'color';
-    colorInput.className = 'pixed__color-input';
-    swatch.append(colorInput);
     const colorText = document.createElement('div');
     colorText.className = 'pixed__color-text';
     current.append(swatch, colorText);
+
+    // Будь-який колір — у кроках RGB565, а не системним вибором на 16 млн
+    const picker = createColorPicker(COLORS, (value) => {
+        setColor(value, false);
+        if (tool === 'eraser' || tool === 'picker') setTool('pencil');
+    });
 
     const paletteTitle = document.createElement('div');
     paletteTitle.className = 'pixed__label';
@@ -342,7 +343,7 @@ export function openPixelEditor(options: {
     hint.className = 'pixed__hint';
     hint.textContent = t('pixel.hint565');
 
-    side.append(current, paletteTitle, palette, usedTitle, used, hint);
+    side.append(current, picker.root, paletteTitle, palette, usedTitle, used, hint);
 
     const main = document.createElement('div');
     main.className = 'pixed';
@@ -394,10 +395,11 @@ export function openPixelEditor(options: {
         board.dataset.tool = tool;
     }
 
-    function setColor(value: number): void {
+    /** `syncPicker: false` — колір прийшов із самого вибору, і йому не треба відлуння. */
+    function setColor(value: number, syncPicker = true): void {
         color = value;
         // Показується вже зведений до 5-6-5 колір — саме його покаже Лілка
-        colorInput.value = toHex(value);
+        if (syncPicker) picker.set(value);
         swatch.style.background = toHex(value);
         const name = firmwareName(value);
         colorText.textContent = '';
@@ -412,13 +414,10 @@ export function openPixelEditor(options: {
         markChips();
     }
 
-    colorInput.addEventListener('input', () => {
-        setColor(hexTo565(colorInput.value));
-        if (tool === 'eraser' || tool === 'picker') setTool('pencil');
-    });
-
     /** Початковий масштаб — найбільший цілий, за якого картинка вміщається. */
     let zoom = (() => {
+        // На телефоні поле вужче за вікно на відступи й рамки
+        const fit = Math.min(Math.min(560, window.innerWidth - 80) / image.width, 420 / image.height);
         let best = 1;
         for (const z of ZOOMS) if (z <= fit) best = z;
         return best;

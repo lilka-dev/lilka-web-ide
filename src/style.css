@@ -1892,7 +1892,7 @@ body {
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) 196px;
+    grid-template-columns: auto minmax(0, 1fr) 210px;
     border-top: 1px solid var(--edge);
     margin-top: 12px;
 }
@@ -2021,18 +2021,6 @@ body {
     height: 42px;
     border-radius: 9px;
     box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
-    cursor: pointer;
-}
-
-/* Системний вибір кольору прихований під квадратиком: сам квадратик
-   показує вже зведений до RGB565 колір, а не той, що вибрали */
-.pixed__color-input {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    opacity: 0;
-    cursor: pointer;
 }
 
 .pixed__color-text {
@@ -2125,4 +2113,121 @@ body {
     .pixed__palette {
         grid-template-columns: repeat(10, 1fr);
     }
+}
+
+/* --- вибір кольору в кроках RGB565 */
+
+.cpick {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.cpick__square,
+.cpick__hue {
+    position: relative;
+    touch-action: none;
+    cursor: crosshair;
+}
+
+/* Без згладжування: сходинки 5-6-5 мають бути видно, а не розмитими */
+.cpick__square canvas,
+.cpick__hue canvas {
+    display: block;
+    width: 100%;
+    image-rendering: pixelated;
+    border-radius: 6px;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+
+.cpick__square canvas {
+    aspect-ratio: 172 / 112;
+}
+
+.cpick__hue canvas {
+    height: 12px;
+}
+
+.cpick__knob {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    margin: -6px 0 0 -6px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.3);
+    pointer-events: none;
+}
+
+.cpick__knob--hue {
+    top: 50%;
+    background: transparent;
+}
+
+.cpick__channel {
+    display: grid;
+    grid-template-columns: 12px minmax(0, 1fr) 22px;
+    align-items: center;
+    gap: 7px;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: var(--muted);
+}
+
+.cpick__channel-value {
+    text-align: right;
+    color: var(--ink);
+}
+
+/* Доріжка — градієнт самого каналу, тож повзунок без власного фону */
+.cpick__slider {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 100%;
+    height: 10px;
+    margin: 0;
+    border-radius: 999px;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+    cursor: pointer;
+}
+
+.cpick__slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.cpick__slider::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border: none;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.cpick__code {
+    width: 100%;
+    padding: 5px 9px;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    color: var(--ink);
+    background: #fff;
+    border: 1px solid var(--edge);
+    border-radius: 7px;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+.cpick__code:focus {
+    outline: none;
+    border-color: var(--teal);
+}
+
+.cpick__code.is-bad {
+    border-color: #b03a2e;
 }

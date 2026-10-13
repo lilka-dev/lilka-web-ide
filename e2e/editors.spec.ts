@@ -128,3 +128,52 @@ test('незбережені зміни не губляться від випа�
     await page.keyboard.press('Escape');
     await expect(page.locator('.dialog--text')).toHaveCount(0);
 });
+
+test('вибір кольору: код із Lua, повзунки в кроках RGB565 і квадрат', async ({ page }) => {
+    await page.locator('.files__bar').getByRole('button', { name: 'New' }).click();
+    await page.locator('.menu').getByRole('button', { name: 'Image…' }).click();
+    await page.locator('.newimg__name').fill('picked');
+    await page.locator('.dialog--newimg').getByRole('button', { name: 'Create' }).click();
+
+    const editor = page.locator('.dialog--pixel');
+    const code = editor.locator('.cpick__code');
+    const sliders = editor.locator('.cpick__slider');
+
+    // Запис як у Lua
+    await code.fill('colors.green');
+    await code.press('Enter');
+    await expect(editor.locator('.pixed__color-text')).toContainText('0x07E0');
+    await expect(sliders.nth(1)).toHaveValue('63');
+    await expect(sliders.nth(1)).toHaveAttribute('max', '63');
+    await expect(sliders.nth(0)).toHaveAttribute('max', '31');
+
+    // Нерозібраний текст колір не змінює
+    await code.fill('нісенітниця');
+    await code.press('Enter');
+    await expect(code).toHaveClass(/is-bad/);
+    await expect(editor.locator('.pixed__color-text')).toContainText('0x07E0');
+
+    // Повзунок червоного до краю: зелений + червоний = жовтий з прошивки
+    await sliders.nth(0).fill('31');
+    await expect(editor.locator('.pixed__color-text')).toContainText('0xFFE0');
+    await expect(editor.locator('.pixed__color-text')).toContainText('colors.yellow');
+
+    // Лівий нижній кут квадрата — чорний за будь-якого відтінку
+    const square = (await editor.locator('.cpick__square').boundingBox())!;
+    await page.mouse.click(square.x + 1, square.y + square.height - 1);
+    await expect(editor.locator('.pixed__color-text')).toContainText('0x0000');
+
+    // Правий верхній кут — повністю насичений відтінок, тобто не чорний
+    await page.mouse.click(square.x + square.width - 1, square.y + 1);
+    await expect(editor.locator('.pixed__color-text')).not.toContainText('0x0000');
+
+    // Обраним кольором справді малюється
+    await code.fill('0xF81F');
+    await code.press('Enter');
+    const canvas = (await editor.locator('.pixed__canvas').boundingBox())!;
+    await page.mouse.click(canvas.x + 2, canvas.y + 2);
+    await editor.getByRole('button', { name: 'Save' }).click();
+
+    const png = await tilePixels(page, 'picked.png');
+    expect(png.data.slice(0, 4)).toEqual([255, 0, 255, 255]);
+});

@@ -282,5 +282,38 @@ function solid(size: number, color: number, transparent = NO_TRANSPARENT_COLOR, 
     ok(!history.canRedo, 'нова зміна обриває гілку повтору');
 }
 
+/*
+ * Вибір кольору: канали в кроках RGB565, HSV і розбір тексту як у Lua.
+ */
+{
+    const art = await import('../src/emulator/pixel-art.ts');
+
+    let broken = 0;
+    for (let c = 0; c < 0x10000; c++) {
+        const { r, g, b } = art.split565(c);
+        if (art.join565(r, g, b) !== c) broken++;
+    }
+    ok(broken === 0, `розклад на канали й назад без втрат: розбіжностей ${broken}`);
+    const parts = art.split565(0xffff);
+    ok(parts.r === 31 && parts.g === 63 && parts.b === 31, 'межі каналів 31/63/31');
+
+    const red = art.hsvToRgb(0, 1, 1);
+    const cyan = art.hsvToRgb(180, 1, 1);
+    ok(red.join() === '255,0,0' && cyan.join() === '0,255,255', `HSV: червоний ${red}, бірюзовий ${cyan}`);
+    const hsv = art.rgbToHsv(0, 255, 0);
+    ok(hsv.h === 120 && hsv.s === 1 && hsv.v === 1, `RGB → HSV зеленого: ${hsv.h} ${hsv.s} ${hsv.v}`);
+    const grey = art.rgbToHsv(128, 128, 128);
+    ok(grey.s === 0, 'сірий без насиченості');
+
+    const names = { red: 0xf800, midnight_blue: 0x18ce };
+    ok(art.parseColor('0xF800', names) === 0xf800, '0xF800 — як у Lua');
+    ok(art.parseColor('0x1f', names) === 0x001f, 'короткий 0x1f');
+    ok(art.parseColor('#00ff00', names) === 0x07e0, '#00ff00 зводиться до 0x07E0');
+    ok(art.parseColor('#f00', names) === 0xf800, 'скорочений #f00');
+    ok(art.parseColor('colors.midnight_blue', names) === 0x18ce, 'colors.midnight_blue');
+    ok(art.parseColor(' Red ', names) === 0xf800, 'ім’я без префікса, регістр і пробіли не важать');
+    ok(art.parseColor('0x10000', names) === null && art.parseColor('toString', names) === null, 'зайве відкидається');
+}
+
 console.log(fails === 0 ? '✔ зображення: усі перевірки пройдено' : `✖ зображення: ${fails} перевірок не пройдено`);
 process.exit(fails ? 1 : 0);

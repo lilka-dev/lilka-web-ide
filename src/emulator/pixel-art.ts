@@ -209,3 +209,60 @@ export class History {
         return this.future.length > 0;
     }
 }
+
+/* ------------------------------------------------ вибір кольору ------ */
+
+/** Канали RGB565 у їхніх власних кроках: червоний і синій 0..31, зелений 0..63. */
+export function split565(color: number): { r: number; g: number; b: number } {
+    return { r: (color >> 11) & 0x1f, g: (color >> 5) & 0x3f, b: color & 0x1f };
+}
+
+export function join565(r: number, g: number, b: number): number {
+    return ((r & 0x1f) << 11) | ((g & 0x3f) << 5) | (b & 0x1f);
+}
+
+/**
+ * HSV → RGB 0..255. Відтінок у градусах, насиченість і яскравість 0..1.
+ * `Math.round`, а не `Math.trunc`: це не відтворення C, а найближчий колір.
+ */
+export function hsvToRgb(h: number, s: number, v: number): [number, number, number] {
+    const f = (n: number) => {
+        const k = (n + h / 60) % 6;
+        return Math.round(255 * (v - v * s * Math.max(0, Math.min(k, 4 - k, 1))));
+    };
+    return [f(5), f(3), f(1)];
+}
+
+export function rgbToHsv(r: number, g: number, b: number): { h: number; s: number; v: number } {
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const delta = max - min;
+    let h = 0;
+    if (delta !== 0) {
+        if (max === r) h = 60 * (((g - b) / delta) % 6);
+        else if (max === g) h = 60 * ((b - r) / delta + 2);
+        else h = 60 * ((r - g) / delta + 4);
+    }
+    if (h < 0) h += 360;
+    return { h, s: max === 0 ? 0 : delta / max, v: max / 255 };
+}
+
+/**
+ * Колір із тексту: `0xF800` (RGB565, як у Lua), `#ff0000` чи `#f00` (RGB888,
+ * зводиться до 5-6-5) або ім'я з таблиці `colors` — з префіксом чи без.
+ * Таблиця передається ззовні: тут немає доступу до `board.json`.
+ */
+export function parseColor(text: string, names: Record<string, number>): number | null {
+    const value = text.trim().toLowerCase();
+    let match = /^0x([0-9a-f]{1,4})$/.exec(value);
+    if (match) return parseInt(match[1], 16);
+
+    match = /^#([0-9a-f]{6})$/.exec(value);
+    if (match) return hexTo565(match[1]);
+
+    match = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/.exec(value);
+    if (match) return hexTo565(match.slice(1).map((digit) => digit + digit).join(''));
+
+    const name = value.replace(/^colors\./, '');
+    return Object.prototype.hasOwnProperty.call(names, name) ? names[name] : null;
+}
