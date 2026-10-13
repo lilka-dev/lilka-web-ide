@@ -31,7 +31,7 @@ import { t, getLang } from '../i18n/index.ts';
  * Не готова тема, а власні правила: бірюза й бурштин уже задають характер
  * інтерфейсу, і редактор має бути з ними в родині, а не сам по собі.
  */
-const HIGHLIGHT = HighlightStyle.define([
+export const HIGHLIGHT = HighlightStyle.define([
     { tag: tags.keyword, color: '#0e7c86', fontWeight: '600' },
     { tag: tags.controlKeyword, color: '#0e7c86', fontWeight: '600' },
     { tag: tags.string, color: '#0a7d3f' },
@@ -44,7 +44,7 @@ const HIGHLIGHT = HighlightStyle.define([
     { tag: tags.punctuation, color: '#5c7a6e' },
 ]);
 
-const THEME = EditorView.theme({
+export const THEME = EditorView.theme({
     '&': {
         fontSize: '13px',
         backgroundColor: '#fbfdfc',

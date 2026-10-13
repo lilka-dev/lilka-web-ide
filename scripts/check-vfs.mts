@@ -272,5 +272,31 @@ const ok = (cond: boolean, msg: string) => {
     ok(vfs.read('/spiffs/A.TXT') === null, 'SPIFFS: регістр розрізняється');
 }
 
+/*
+ * Які файли відкриваються в текстовому редакторі. `.lua` — ні: це програма,
+ * її відкриває головний редактор із запуском.
+ */
+{
+    const { isEditableText, jsonProblem } = await import('../src/ui/text-file.ts');
+    const bytes = (text: string) => new TextEncoder().encode(text);
+
+    ok(isEditableText('notes.txt', bytes('hi')), '.txt — текст');
+    ok(isEditableText('config.json', new Uint8Array(0)), 'порожній .json — текст');
+    ok(!isEditableText('main.lua', bytes('print(1)')), '.lua — у головний редактор');
+    ok(!isEditableText('ship.png', bytes('hi')), '.png — ніколи не текст');
+    ok(isEditableText('README', bytes('Привіт, Лілко')), 'без розширення: UTF-8 — текст');
+    ok(!isEditableText('save.state', new Uint8Array([1, 0, 2, 3])), 'нульовий байт — двійковий');
+    ok(!isEditableText('x.dat', new Uint8Array([0xff, 0xfe, 0x41])), 'невалідний UTF-8 — двійковий');
+
+    // Обрізаний зразок розрізає багатобайтовий символ — це не помилка
+    const long = bytes('ї'.repeat(5000));
+    ok(isEditableText('long.dat', long), 'символ на межі зразка не робить файл двійковим');
+
+    ok(jsonProblem('{"a": 1}') === null, 'правильний JSON');
+    ok(jsonProblem('') === null, 'порожній JSON не лається');
+    const bad = jsonProblem('{\n  "a": 1,\n}');
+    ok(bad !== null && bad.line === 3, `помилка JSON на рядку 3: ${bad?.line}`);
+}
+
 console.log(fails === 0 ? '✔ файлова система: усі перевірки пройдено' : `✖ файлова система: ${fails} перевірок не пройдено`);
 process.exit(fails ? 1 : 0);

@@ -17,6 +17,7 @@ import { basename, dirname, normalizePath } from '../emulator/vfs.ts';
 import { detectFormat } from '../emulator/image-loader.ts';
 import { inspectImage, type ImageInfo, type ImageProblem } from '../emulator/image-info.ts';
 import { fileIcon, iconElement } from './icons.ts';
+import { isEditableText } from './text-file.ts';
 import { t, bindTitle, onLangChange, type Key } from '../i18n/index.ts';
 
 /** Корінь менеджера. У шляхах лишається `/sd`, бо так на залізі. */
@@ -137,6 +138,7 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
                         events.onMkdir(`${dir}/${name}`),
                     ),
             },
+            { label: t('files.createImage'), run: createImage },
             {
                 label: t('files.createFile'),
                 run: () =>
@@ -296,6 +298,8 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
             items.push({ label: t('files.open'), kind: 'accent', run: () => setDir(entry.path) });
         } else if (entry.name.endsWith('.lua')) {
             items.push({ label: t('files.openInEditor'), kind: 'accent', run: () => events.onOpenLua(entry.path) });
+        } else if (isEditableText(entry.name, entry.data)) {
+            items.push({ label: t('editors.edit'), kind: 'accent', run: () => void editText(entry) });
         }
 
         /*
@@ -310,6 +314,7 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
          * додав би, крім шуму.
          */
         if (info) {
+            items.push({ label: t('image.draw'), icon: 'pencil', run: () => void drawImage(entry) });
             items.push({ label: t('image.rotateLeft'), icon: 'rotateLeft', run: () => void editImage(entry, 'rotate-left') });
             items.push({ label: t('image.rotateRight'), icon: 'rotateRight', run: () => void editImage(entry, 'rotate-right') });
             items.push({ label: t('image.mirror'), icon: 'mirror', run: () => void editImage(entry, 'mirror') });
@@ -420,6 +425,60 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
         } catch (error) {
             showNotice(t('image.failed', { name: entry.name, error: String(error) }), 'error');
         }
+    }
+
+    /**
+     * Нова картинка: назва й розмір, потім одразу полотно.
+     *
+     * Тека запам'ятовується на початку: поки людина малює, менеджер можна
+     * перегорнути деінде, а картинка має лягти туди, де її почали створювати.
+     */
+    function createImage(): void {
+        const target = dir;
+        const taken = new Set(getList().map((entry) => entry.name.toLowerCase()));
+        void import('./pixel-editor.ts').then(({ openNewImageDialog, openPixelEditor, blankImage }) =>
+            openNewImageDialog(
+                (name) => taken.has(name.toLowerCase()),
+                ({ name, width, height }) =>
+                    openPixelEditor({
+                        fileName: name,
+                        image: blankImage(width, height),
+                        isNew: true,
+                        onSave: (data) => events.onAdd(`${target}/${name}`, data),
+                        onError: (error) => showNotice(t('pixel.failed', { name, error: String(error) }), 'error'),
+                    }),
+            ),
+        );
+    }
+
+    /**
+     * Малювання в наявній картинці.
+     *
+     * Зберігається як PNG поруч, з тим самим ім'ям — так само, як поворот і
+     * обрізання: BMP-первотвір лишається, бо міг бути потрібен деінде.
+     */
+    async function drawImage(entry: FileEntry): Promise<void> {
+        if (!entry.data) return;
+        const { pngName } = await import('../emulator/image-edit.ts');
+        const name = pngName(entry.name);
+        try {
+            const { openPixelEditor, decodePixels } = await import('./pixel-editor.ts');
+            openPixelEditor({
+                fileName: entry.name,
+                image: await decodePixels(entry.data),
+                isNew: false,
+                onSave: (data) => events.onAdd(`${dirname(entry.path)}/${name}`, data),
+                onError: (error) => showNotice(t('pixel.failed', { name, error: String(error) }), 'error'),
+            });
+        } catch (error) {
+            showNotice(t('image.failed', { name: entry.name, error: String(error) }), 'error');
+        }
+    }
+
+    /** Текстовий файл — у власному вікні, бо головний редактор запускає код. */
+    async function editText(entry: FileEntry): Promise<void> {
+        const { openTextEditor } = await import('./text-editor.ts');
+        await openTextEditor(entry.name, entry.data ?? new Uint8Array(0), (data) => events.onAdd(entry.path, data));
     }
 
     /**
@@ -697,6 +756,8 @@ export function createFilesPanel(events: FilesPanelEvents): FilesPanel {
     function activate(entry: FileEntry): void {
         if (entry.isDirectory) setDir(entry.path);
         else if (entry.name.endsWith('.lua')) events.onOpenLua(entry.path);
+        else if (entry.data && inspectImage(entry.data)) void drawImage(entry);
+        else if (isEditableText(entry.name, entry.data)) void editText(entry);
     }
 
     function draw(): void {

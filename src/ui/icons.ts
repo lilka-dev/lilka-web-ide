@@ -47,6 +47,56 @@ const ICONS: Record<string, string> = {
         <path d="M6 2.6v15.4h15.4" stroke="currentColor" stroke-width="2.1" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M2.6 6H18v15.4" stroke="currentColor" stroke-width="2.1" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
     `,
+    /*
+     * Інструменти піксельного редактора. `pencil` заодно позначає пункт меню
+     * «Малювати» — це теж дія, що змінює саму картинку.
+     */
+    pencil: `
+        <path d="M4 20l1.2-4.6L15.6 5a2 2 0 0 1 2.8 0l.6.6a2 2 0 0 1 0 2.8L8.6 18.8z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>
+        <path d="M13.8 6.8l3.4 3.4" stroke="currentColor" stroke-width="2"/>
+    `,
+    eraser: `
+        <path d="M8.2 19.4 3.6 14.8a1.6 1.6 0 0 1 0-2.3l8.5-8.5a1.6 1.6 0 0 1 2.3 0l5.6 5.6a1.6 1.6 0 0 1 0 2.3l-7.9 7.5z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>
+        <path d="M7.4 8.7l7.9 7.9M8.2 19.4H20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    `,
+    bucket: `
+        <path d="M10.4 3.4 19 12l-6.6 6.6a1.6 1.6 0 0 1-2.3 0l-5.7-5.7a1.6 1.6 0 0 1 0-2.3z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>
+        <path d="M4.6 12H19" stroke="currentColor" stroke-width="2"/>
+        <path d="M20.6 15.4s1.6 2 1.6 3.1a1.6 1.6 0 0 1-3.2 0c0-1.1 1.6-3.1 1.6-3.1z" fill="currentColor"/>
+    `,
+    line: `
+        <path d="M5 19 19 5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+    `,
+    rect: `
+        <rect x="4" y="5.5" width="16" height="13" rx="1" stroke="currentColor" stroke-width="2.1" fill="none"/>
+    `,
+    rectFill: `
+        <rect x="4" y="5.5" width="16" height="13" rx="1" fill="currentColor"/>
+    `,
+    picker: `
+        <path d="M14.2 6.4l3.4 3.4M16.6 3.9a2 2 0 0 1 2.8 0l.7.7a2 2 0 0 1 0 2.8l-2.6 2.6-3.5-3.5z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>
+        <path d="M13.6 8.2 5.2 16.6 4 20l3.4-1.2 8.4-8.4" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>
+    `,
+    undo: `
+        <path d="M9 14 4 9l5-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
+    `,
+    redo: `
+        <path d="M15 14l5-5-5-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
+    `,
+    gridLines: `
+        <rect x="3.5" y="3.5" width="17" height="17" rx="1.5" stroke="currentColor" stroke-width="1.8" fill="none"/>
+        <path d="M9.2 3.5v17M14.8 3.5v17M3.5 9.2h17M3.5 14.8h17" stroke="currentColor" stroke-width="1.4"/>
+    `,
+    zoomIn: `
+        <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="2" fill="none"/>
+        <path d="M15.4 15.4 20.5 20.5M10.5 7.6v5.8M7.6 10.5h5.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    `,
+    zoomOut: `
+        <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="2" fill="none"/>
+        <path d="M15.4 15.4 20.5 20.5M7.6 10.5h5.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    `,
     folder: `
         <path d="M2.5 6.2a1.7 1.7 0 0 1 1.7-1.7h4.6l1.9 2.2h7.6a1.7 1.7 0 0 1 1.7 1.7v9.9a1.7 1.7 0 0 1-1.7 1.7H4.2a1.7 1.7 0 0 1-1.7-1.7z" fill="${AMBER}"/>
         <path d="M2.5 9.3h19v9a1.7 1.7 0 0 1-1.7 1.7H4.2a1.7 1.7 0 0 1-1.7-1.7z" fill="#ffc24d"/>

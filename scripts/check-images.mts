@@ -206,5 +206,81 @@ function solid(size: number, color: number, transparent = NO_TRANSPARENT_COLOR, 
     ok(edit.pngName('no-extension') === 'no-extension.png', 'файл без розширення теж');
 }
 
+/*
+ * Піксельний редактор.
+ *
+ * Головне — полотно не може містити того, чого залізо не покаже: колір
+ * зводиться до RGB565, альфа — до одного біта, як у `loadImagePNG`. І
+ * збереження мусить бути без втрат: PNG із полотна прочитається прошивкою
+ * рівно тими самими значеннями.
+ */
+{
+    const art = await import('../src/emulator/pixel-art.ts');
+    const { imageFromRgba } = await import('../src/emulator/image-loader.ts');
+
+    // Усі 65536 кольорів переживають збереження в RGBA і читання прошивкою
+    const all = art.createPixels(256, 256);
+    for (let i = 0; i < 0x10000; i++) all.pixels[i] = i;
+    all.pixels[123] = art.TRANSPARENT;
+    const rgba = art.toRgba(all);
+    const back = art.fromRgba(rgba, 256, 256);
+    let lost = 0;
+    for (let i = 0; i < 0x10000; i++) if (back.pixels[i] !== all.pixels[i]) lost++;
+    ok(lost === 0, `полотно → RGBA → полотно без втрат: розбіжностей ${lost}`);
+
+    // І те саме читає порт loadImagePNG: прозорий стає transparentColor
+    const loaded = imageFromRgba(rgba, 256, 256, { transparentColor: 0x1234 });
+    ok(loaded.pixels[0xf800] === 0xf800 && loaded.pixels[123] === 0x1234, 'PNG із редактора прошивка читає тими самими кольорами');
+
+    // Напівпрозорість, як у прошивці: лише alpha == 0 прозоре
+    const semi = art.fromRgba(new Uint8Array([255, 0, 0, 1, 0, 255, 0, 0]), 2, 1);
+    ok(semi.pixels[0] === 0xf800 && semi.pixels[1] === art.TRANSPARENT, 'alpha 1 — непрозоро, alpha 0 — прозоро');
+
+    ok(art.hexTo565('#ff0000') === 0xf800, 'червоний #ff0000 — 0xF800');
+    ok(art.hexTo565('#070307') === 0x0000, 'відтінок, якого Лілка не розрізнить, стає чорним');
+    ok(art.luaHex(0x1f) === '0x001F', `запис для Lua: ${art.luaHex(0x1f)}`);
+
+    // Лінія включає обидва кінці й не має розривів
+    const line = art.createPixels(8, 8);
+    art.drawLine(line, 0, 0, 7, 3, 1);
+    const painted = [...line.pixels].filter((value) => value === 1).length;
+    ok(painted === 8 && art.getPixel(line, 0, 0) === 1 && art.getPixel(line, 7, 3) === 1, `лінія 8 пікселів з кінцями: ${painted}`);
+
+    // Лінія за межами полотна не падає і не пише за край
+    const edge = art.createPixels(4, 4);
+    art.drawLine(edge, -5, 1, 10, 1, 2);
+    ok([...edge.pixels].filter((value) => value === 2).length === 4, 'лінія за край обрізається');
+
+    // Прямокутник у будь-якому порядку кутів
+    const rect = art.createPixels(6, 6);
+    art.drawRect(rect, 4, 4, 1, 1, 3, false);
+    ok([...rect.pixels].filter((value) => value === 3).length === 12 && art.getPixel(rect, 2, 2) === art.TRANSPARENT, 'контур 4×4 — 12 пікселів, середина порожня');
+    art.drawRect(rect, 1, 1, 4, 4, 3, true);
+    ok([...rect.pixels].filter((value) => value === 3).length === 16, 'зафарбований 4×4 — 16 пікселів');
+
+    // Заливка не просочується крізь діагональ — чотири сусіди, а не вісім
+    const fill = art.createPixels(5, 5);
+    for (let i = 0; i < 5; i++) art.setPixel(fill, i, 4 - i, 7);
+    art.floodFill(fill, 0, 0, 9);
+    ok(art.getPixel(fill, 0, 0) === 9 && art.getPixel(fill, 4, 4) === art.TRANSPARENT, 'заливка зупиняється на діагоналі');
+
+    // Заливка великого полотна не переповнює стек
+    const big = art.createPixels(art.MAX_SIDE, art.MAX_SIDE);
+    art.floodFill(big, 0, 0, 5);
+    ok(big.pixels.every((value) => value === 5), 'заливка 1024×1024 без переповнення стека');
+
+    // Історія: скасування й повтор повертають точно ті самі пікселі
+    const canvas = art.createPixels(3, 3);
+    const history = new art.History();
+    history.push(canvas);
+    art.setPixel(canvas, 1, 1, 0xffff);
+    history.undo(canvas);
+    ok(art.getPixel(canvas, 1, 1) === art.TRANSPARENT && history.canRedo, 'скасування повертає стан');
+    history.redo(canvas);
+    ok(art.getPixel(canvas, 1, 1) === 0xffff, 'повтор повертає зміну');
+    history.push(canvas);
+    ok(!history.canRedo, 'нова зміна обриває гілку повтору');
+}
+
 console.log(fails === 0 ? '✔ зображення: усі перевірки пройдено' : `✖ зображення: ${fails} перевірок не пройдено`);
 process.exit(fails ? 1 : 0);
