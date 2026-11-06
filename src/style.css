@@ -124,7 +124,8 @@ body {
     .device {
         order: 1;
     }
-    .error-bar {
+    .error-bar,
+    .network-bar {
         order: 2;
     }
     .output {
@@ -1505,6 +1506,181 @@ body {
     word-break: break-word;
     -webkit-user-select: text;
     user-select: text;
+}
+
+/* Заблокований мережевий запит: не помилка програми, тож бурштин, а не червоне */
+.network-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 10px 10px 12px;
+    background: #fdf6e8;
+    border: 1px solid #f0dcae;
+    border-left: 4px solid #c98a0b;
+    border-radius: 10px;
+    font-size: 12px;
+}
+
+.network-bar__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.network-bar__title {
+    font-weight: 600;
+    color: #9a6400;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.network-bar__close {
+    appearance: none;
+    margin-left: auto;
+    font: inherit;
+    font-size: 18px;
+    line-height: 1;
+    color: var(--muted);
+    background: transparent;
+    border: none;
+    padding: 0 4px;
+    cursor: pointer;
+}
+
+.network-bar__text {
+    margin: 0;
+    color: #5c4310;
+    word-break: break-word;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+/* Налаштування проксі — у смузі під пристроєм і у вікні «Мережа» */
+.proxy {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 12px;
+    color: #5c4310;
+}
+
+.proxy__form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.proxy__label {
+    font-weight: 600;
+}
+
+.proxy__input {
+    flex: 1 1 160px;
+    min-width: 0;
+    font: inherit;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    padding: 3px 6px;
+    border: 1px solid #f0dcae;
+    border-radius: 6px;
+    background: #fff;
+}
+
+.proxy__btn {
+    appearance: none;
+    font: inherit;
+    color: #9a6400;
+    background: transparent;
+    border: 1px solid #f0dcae;
+    border-radius: 6px;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+
+.proxy__btn:hover {
+    background: #f8ebcc;
+}
+
+.proxy__current,
+.proxy__state {
+    margin: 0;
+    word-break: break-word;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+.proxy__current {
+    color: var(--muted);
+}
+
+.proxy__current--on {
+    color: #2e7d4f;
+    font-weight: 600;
+}
+
+.proxy__state--bad {
+    color: #c0392b;
+}
+
+.proxy__state--good {
+    color: #2e7d4f;
+}
+
+.proxy__howto summary {
+    cursor: pointer;
+    color: #9a6400;
+}
+
+.proxy__howto ol {
+    margin: 6px 0;
+    padding-left: 20px;
+}
+
+.proxy__howto li {
+    margin: 2px 0;
+}
+
+.proxy__howto code {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    background: #f8ebcc;
+    padding: 0 4px;
+    border-radius: 4px;
+    -webkit-user-select: all;
+    user-select: all;
+}
+
+.proxy__howto a {
+    color: #9a6400;
+}
+
+/* Вікно «Мережа» */
+.dialog--network {
+    max-width: 520px;
+}
+
+.network-dialog__body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 14px;
+}
+
+.network-dialog__intro {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+/* Кнопка «Мережа»: крапка — проксі ввімкнено */
+.editor__network {
+    position: relative;
+}
+
+.editor__network-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #2e9d5f;
 }
 
 /* Консоль під пристроєм, у тій самій колонці, що й смуга помилки */

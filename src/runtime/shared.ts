@@ -30,6 +30,12 @@ export const CTRL = {
     SKIPPED: 8,
     /** Номер кадру, який головний потік уже вивів на екран. */
     PRESENTED: 11,
+    /**
+     * 1, поки воркер стоїть у синхронному `http.execute`. Кадрів у цей час
+     * немає, як і на залізі, і сторож не має приймати очікування мережі за
+     * зависання програми.
+     */
+    NETWORK: 12,
     /** Час останнього кадру у воркері, мс — для сторожового таймера. */
     HEARTBEAT: 9,
     /** Скільки інструкцій Lua виконано (лічильник з debug.sethook). */
@@ -109,6 +115,8 @@ export type WorkerMessage =
     | { type: 'print'; text: string }
     | { type: 'sound'; event: SoundEvent }
     | { type: 'file-write'; path: string; data: Uint8Array }
+    /** http.execute не дістався сервера: CORS, http:// зі сторінки https://, проксі вимкнено. */
+    | { type: 'network-blocked'; url: string; viaProxy: boolean }
     | { type: 'error'; message: string; traceback?: string }
     | { type: 'finished'; reason: 'exit' | 'no-loop' | 'stopped' };
 
@@ -127,5 +135,7 @@ export type HostMessage =
           files: Array<[string, Uint8Array]>;
           /** RGBA для PNG: розпакування в браузері асинхронне, тож заздалегідь. */
           decodedPng: Array<[string, { width: number; height: number; rgba: Uint8Array }]>;
+          /** Адреса локального проксі для http.execute або null — запити напряму. */
+          httpProxy: string | null;
       }
     | { type: 'stop' };

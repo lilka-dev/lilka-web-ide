@@ -11,9 +11,12 @@
 
 import wasmUri from 'wasmoon/dist/glue.wasm?url';
 import { LuaRuntime } from './runtime.ts';
+import { createXhrTransport } from './http.ts';
 import type { HostMessage, WorkerMessage } from './shared.ts';
 
 let runtime: LuaRuntime | null = null;
+/** Проксі для http.execute; приходить із кожною командою запуску. */
+let httpProxy: string | null = null;
 
 function post(message: WorkerMessage): void {
     self.postMessage(message);
@@ -38,6 +41,9 @@ self.onmessage = async (event: MessageEvent<HostMessage>) => {
                 // WebAudio у воркері недоступний, тому звук грає головний потік
                 onSound: (event) => post({ type: 'sound', event }),
                 onFileWrite: (path, data) => post({ type: 'file-write', path, data }),
+                // Синхронний XHR дозволений лише у воркері — тому транспорт підключається тут
+                httpTransport: createXhrTransport(() => httpProxy),
+                onNetworkBlocked: (url) => post({ type: 'network-blocked', url, viaProxy: httpProxy !== null }),
             });
             await runtime.prepare();
             post({ type: 'ready' });
@@ -46,6 +52,7 @@ self.onmessage = async (event: MessageEvent<HostMessage>) => {
 
         if (message.type === 'run') {
             if (!runtime) throw new Error('Рантайм не готовий');
+            httpProxy = message.httpProxy;
             runtime.loadFiles(message.scriptPath, message.files, message.decodedPng);
             post({ type: 'started' });
             const result = runtime.run(message.code, message.name);

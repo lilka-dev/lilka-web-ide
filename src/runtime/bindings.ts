@@ -10,7 +10,7 @@
  */
 
 import { color565 } from '../emulator/color.ts';
-import { joinPath, dirname } from '../emulator/vfs.ts';
+import { joinPath, dirname, normalizePath } from '../emulator/vfs.ts';
 import { Transform } from '../emulator/transform.ts';
 import { fCos360, fSin360 } from '../emulator/fmath.ts';
 import { NOTES } from '../generated/notes.ts';
@@ -21,6 +21,7 @@ import { FIRMWARE_STRINGS } from '../generated/firmware-strings.ts';
 import { Alert, InputDialog, ProgressDialog } from '../emulator/widgets.ts';
 import type { ButtonName } from '../emulator/controller.ts';
 import type { LilkaDevice } from './device.ts';
+import { HTTPC_ERROR_CONNECTION_REFUSED, HTTPC_ERROR_READ_TIMEOUT, type HttpOutcome, type HttpRequest } from './http.ts';
 
 /** Причини зупинки, які прив'язки повідомляють нагору через виняток. */
 export class LuaExit extends Error {
@@ -42,6 +43,10 @@ export interface BindingHooks {
     sleepMs(ms: number): void;
     running(): boolean;
     /** Звук іде в головний потік: у воркері WebAudio недоступний. */
+    /** Синхронний HTTP-запит. Без транспорту — як Лілка без WiFi. */
+    http?(request: HttpRequest): HttpOutcome;
+    /** Запит не відбувся. Пояснення показує інтерфейс: це текст для людини, а не для скрипта. */
+    networkBlocked?(url: string): void;
     sound(event: { kind: 'tone'; frequency: number; durationMs: number | null } | { kind: 'melody'; tones: ToneEvent[]; tempo: number } | { kind: 'stop' }): void;
 }
 
@@ -800,6 +805,122 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
     };
 
     /**
+     * wifi — імітація `lualilka_wifi.cpp` поверх однієї віртуальної точки
+     * доступу.
+     *
+     * Справжнього радіо в браузері немає, тож відтворюється те, що бачить
+     * скрипт: KeiraOS під'єднується до мережі сама ще до запуску програми,
+     * тому статус одразу `WL_CONNECTED`, якщо браузер онлайн. Коди — з
+     * `wl_status_t` (arduino-esp32, `WiFiType.h`); прошивка пушить їх через
+     * `lua_pushinteger`, тож вони цілі.
+     *
+     * Розбіжність: на залізі `WiFi.begin` асинхронний, і статус кілька
+     * секунд лишається не 3. Тут під'єднання миттєве.
+     */
+    const WL_CONNECTED = 3;
+    const WL_DISCONNECTED = 6;
+    const virtualAp = { ssid: 'Lilka-Emulator', rssi: -50, encryption: 3 /* WIFI_AUTH_WPA2_PSK */ };
+    let wifiLinked = true;
+    const browserOnline = (): boolean =>
+        // Під Node `navigator.onLine` немає — вважається, що мережа є
+        typeof navigator === 'undefined' || (navigator as { onLine?: boolean }).onLine !== false;
+    const wifiConnected = (): boolean => wifiLinked && browserOnline();
+    /** `lua_tointeger(L, 1) - 1`: індекс поза списком дає 0, як `WiFi.RSSI`/`encryptionType` для чужого індексу. */
+    const apAt = (index: number): typeof virtualAp | null => (Math.trunc(Number(index)) === 1 ? virtualAp : null);
+
+    const wifi = {
+        connect: impl('wifi.connect', () => {
+            wifiLinked = true;
+        }),
+        disconnect: impl('wifi.disconnect', () => {
+            wifiLinked = false;
+        }),
+        get_status: impl('wifi.get_status', () => (wifiConnected() ? WL_CONNECTED : WL_DISCONNECTED)),
+        scan: impl('wifi.scan', () => (browserOnline() ? [virtualAp.ssid] : [])),
+        get_rssi: impl('wifi.get_rssi', (index: number) => apAt(index)?.rssi ?? 0),
+        get_encryption_type: impl('wifi.get_encryption_type', (index: number) => apAt(index)?.encryption ?? 0),
+        // Формат як у прошивці: "%02X" через двокрапку. Префікс 24:0A:C4 — Espressif
+        get_mac: impl('wifi.get_mac', () => '24:0A:C4:4C:69:6C'),
+        // IPAddress::toString() без з'єднання — нульова адреса
+        get_local_ip: impl('wifi.get_local_ip', () => (wifiConnected() ? '192.168.4.2' : '0.0.0.0')),
+        set_config: impl('wifi.set_config', () => {}),
+    };
+
+    /**
+     * http — порт `lualilka_http_execute` (lualilka_http.cpp).
+     *
+     * Розбір таблиці аргументів і обрізання тіла робить преамбула; сюди
+     * приходить уже те, що прошивка передала б у `HTTPClient`. Повертається
+     * таблиця з прапорцями замість `nil`: `null` із JS приїжджає в Lua окремим
+     * значенням, а не як `nil`.
+     */
+    const http = {
+        __execute: impl(
+            'http.execute',
+            (url: unknown, method: string, body: unknown, file: unknown) => {
+                // url = nil у прошивці доходить до http.begin(client, nullptr):
+                // хоста немає, sendRequest не може з'єднатися — CONNECTION_REFUSED
+                // Без Wi-Fi HTTPClient не з'єднається — той самий -1
+                const outcome: HttpOutcome =
+                    typeof url !== 'string' || !wifiConnected()
+                        ? { kind: 'network-error' }
+                        : (hooks.http?.({ url, method, body: body ? bytesOf(body) : null }) ?? {
+                              kind: 'network-error',
+                          });
+
+                if (outcome.kind !== 'response') {
+                    // Без Wi-Fi (wifi.disconnect) запит не йшов у мережу — блокувати нікому
+                    if (outcome.kind === 'network-error' && typeof url === 'string' && wifiConnected()) {
+                        hooks.networkBlocked?.(url);
+                    }
+                    const code =
+                        outcome.kind === 'timeout' ? HTTPC_ERROR_READ_TIMEOUT : HTTPC_ERROR_CONNECTION_REFUSED;
+                    return { code, has_response: false, response: [], file_error: false };
+                }
+
+                // Тіло відповіді прошивка читає лише при HTTP_CODE_OK
+                if (outcome.status !== 200) {
+                    return { code: outcome.status, has_response: false, response: [], file_error: false };
+                }
+
+                if (typeof file === 'string') {
+                    if (!canCreateFile(file)) {
+                        return { code: outcome.status, has_response: false, response: [], file_error: true };
+                    }
+                    // Розбіжність: прошивка копіює потік циклом
+                    // `while (connected() && available())` і на повільному
+                    // з'єднанні може записати файл не до кінця. Тут відповідь
+                    // уже повна, тож файл завжди цілий.
+                    device.writeFile(normalizePath(file), outcome.body);
+                    return { code: outcome.status, has_response: false, response: [], file_error: false };
+                }
+
+                // lua_pushstring(response.c_str()) — рядок закінчується на
+                // першому нульовому байті
+                const cut = outcome.body.indexOf(0);
+                const bytes = cut >= 0 ? outcome.body.subarray(0, cut) : outcome.body;
+                return { code: outcome.status, has_response: true, response: Array.from(bytes), file_error: false };
+            },
+        ),
+    };
+
+    /**
+     * Чи відкриється `fopen(fileName, "wb")`.
+     *
+     * Шлях іде у fopen як є, без `luapath_to_path`: відносного шляху ESP-IDF
+     * не знає (поточної теки немає), корінь лише для читання, а теки-батька
+     * fopen не створює.
+     */
+    const canCreateFile = (path: string): boolean => {
+        if (!path.startsWith('/')) return false;
+        const full = normalizePath(path);
+        if (device.vfs.stat(full)?.isDirectory) return false;
+        const parent = dirname(full);
+        if (parent === '/') return false;
+        return device.vfs.stat(parent)?.isDirectory === true;
+    };
+
+    /**
      * `console.print` прошивки. Рядок збирається в преамбулі, бо правила
      * перетворення значень на текст знає лише Lua, а не JS.
      *
@@ -827,6 +948,8 @@ export function createBindings(device: LilkaDevice, hooks: BindingHooks): Bindin
             audio,
             console,
             crypto,
+            http,
+            wifi,
             ui,
             __notes: { ...NOTES },
             __strings: { ...FIRMWARE_STRINGS },

@@ -29,6 +29,8 @@ export interface HostEvents {
     onStateChange(state: LuaHostState): void;
     /** Файли змінилися — панель файлів має перемалюватися. */
     onFilesChange?(): void;
+    /** http.execute не дістався сервера. `viaProxy` — запит ішов через локальний проксі. */
+    onNetworkBlocked?(url: string, viaProxy: boolean): void;
 }
 
 interface DecodedPng {
@@ -59,6 +61,14 @@ export class LuaHost {
      * уміст передається у воркер цілком.
      */
     readonly vfs = new Vfs();
+
+    /**
+     * Локальний проксі для http.execute (`public/lilka-proxy.mjs`) або null.
+     * Воркер отримує його з командою запуску, тож зміна діє з наступного
+     * запуску: під час роботи воркер повідомлень не читає, бо спить в
+     * Atomics.wait.
+     */
+    httpProxy: string | null = null;
     /** PNG розпаковуються заздалегідь: у воркері це зробити синхронно годі. */
     private readonly decodedPng = new Map<string, DecodedPng>();
 
@@ -134,6 +144,9 @@ export class LuaHost {
                 this.vfs.write(message.path, message.data);
                 void this.persist();
                 this.events.onFilesChange?.();
+                break;
+            case 'network-blocked':
+                this.events.onNetworkBlocked?.(message.url, message.viaProxy);
                 break;
             case 'error':
                 this.buzzer.silence();
@@ -247,6 +260,7 @@ export class LuaHost {
             scriptPath,
             files: this.vfs.allFiles().map((entry) => [entry.path, this.vfs.read(entry.path)!] as [string, Uint8Array]),
             decodedPng: [...this.decodedPng.entries()],
+            httpProxy: this.httpProxy,
         });
         return true;
     }
@@ -338,6 +352,13 @@ export class LuaHost {
 
         const now = performance.now();
         const frame = Atomics.load(control, CTRL.FRAME);
+
+        // Синхронний http.execute тримає воркер без кадрів, як і на залізі;
+        // його обмежує власний тайм-аут транспорту, а не сторож
+        if (Atomics.load(control, CTRL.NETWORK) === 1) {
+            this.lastProgressAt = now;
+            return;
+        }
 
         if (frame !== this.lastProgressFrame) {
             this.lastProgressFrame = frame;

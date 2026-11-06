@@ -13,6 +13,7 @@ import { LilkaDevice } from '../src/runtime/device.ts';
 import { createSharedMemory, CTRL, bufferOffset } from '../src/runtime/shared.ts';
 import { color565 } from '../src/emulator/color.ts';
 import type { FontJson } from '../src/emulator/font.ts';
+import type { HttpOutcome, HttpRequest } from '../src/runtime/http.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const board = JSON.parse(readFileSync(join(root, 'src/generated/board.json'), 'utf8'));
@@ -684,6 +685,125 @@ async function runWithVfs(scriptPath: string, code: string, files: Array<[string
     ok(output[5] === 'true\t96', `encrypt/decrypt: байти цілі, IV + доповнення: "${output[5]}"`);
     ok(output[6] === 'Ключ має бути 16, 24 або 32 байти, отримано 3', `перевірка ключа: "${output[6]}"`);
     ok(output[7] === 'nil\tnil\tnil\tnil\tnil', `у _G немає службових імен: "${output[7]}"`);
+}
+
+// http.execute — порт lualilka_http_execute; мережа підробна, бо під Node
+// синхронного XHR немає, а перевіряється саме відтворення прошивки
+{
+    const requests: HttpRequest[] = [];
+    const blocked: string[] = [];
+    const transport = (request: HttpRequest): HttpOutcome => {
+        requests.push(request);
+        if (request.url.endsWith('/down')) return { kind: 'network-error' };
+        if (request.url.endsWith('/slow')) return { kind: 'timeout' };
+        if (request.url.endsWith('/missing')) return { kind: 'response', status: 404, body: new TextEncoder().encode('nope') };
+        if (request.url.endsWith('/bin')) return { kind: 'response', status: 200, body: new Uint8Array([0x41, 0xff, 0x00, 0x42]) };
+        return { kind: 'response', status: 200, body: new TextEncoder().encode('привіт') };
+    };
+    const memory = createSharedMemory(W, H);
+    const output: string[] = [];
+    const runtime = new LuaRuntime({
+        memory,
+        fonts,
+        statusBarHeight: profile.canvas.statusBarHeight,
+        defaultFont: board.defaultFont,
+        onPrint: (t) => output.push(t),
+        httpTransport: transport,
+        onNetworkBlocked: (url) => blocked.push(url),
+    });
+    await runtime.prepare();
+    runtime.loadFiles('/sd/app/main.lua', [['/sd/app/main.lua', new Uint8Array(0)]]);
+    const result = runtime.run(`
+        local r = http.execute({ url = "https://example.com/ok" })
+        print(r.code, r.response, http.HTTP_CODE_OK, r.code == http.HTTP_CODE_OK)
+        r = http.execute({ url = "https://example.com/missing" })
+        print(r.code, r.response)
+        print(http.execute({ url = "https://example.com/down" }).code, http.execute({ url = "https://example.com/slow" }).code)
+        r = http.execute({ url = "https://example.com/bin" })
+        print(#r.response, r.response:byte(2))
+        http.execute({ url = "https://example.com/post", body = "a\\0b" })
+        http.execute({ url = "https://example.com/put", method = "PUT", body = 123 })
+        r = http.execute({ url = "https://example.com/bin", file = "/sd/app/data.bin" })
+        print(r.code, r.response)
+        print(select(2, pcall(http.execute, { url = "https://example.com/bin", file = "data.bin" })))
+        print(select(2, pcall(http.execute, { url = "https://example.com/bin", file = "/sd/nodir/x.bin" })))
+        print(select(2, pcall(http.execute)), select(2, pcall(http.execute, "url")))
+        print(http.execute({}).code)
+    `);
+    const device = (runtime as unknown as { device: LilkaDevice }).device;
+    const saved = device.vfs.read('/sd/app/data.bin');
+    runtime.close();
+    ok(result.reason === 'no-loop', `http: скрипт мав завершитися без помилки: ${result.message ?? result.reason}`);
+    ok(output[0] === '200.0\tпривіт\t200.0\ttrue', `http: код і HTTP_CODE_OK — float, як lua_pushnumber: "${output[0]}"`);
+    ok(output[1] === '404.0\tnil', `http: тіло лише при 200: "${output[1]}"`);
+    // Пояснення про CORS — справа інтерфейсу; рантайм лише повідомляє URL і
+    // нічого не друкує сам, тож вивід скрипта лишається таким, як на залізі
+    ok(
+        blocked.length === 1 && blocked[0] === 'https://example.com/down',
+        `http: про заблокований запит повідомлено один раз: ${JSON.stringify(blocked)}`,
+    );
+    ok(!output.some((line) => line.startsWith('⚠')), 'http: рантайм не друкує підказок у вивід скрипта');
+    const lines = output;
+    ok(lines[2] === '-1.0\t-11.0', `http: коди помилок HTTPClient: "${lines[2]}"`);
+    ok(lines[3] === '2\t255', `http: відповідь двійкова, обрізана на \\0: "${lines[3]}"`);
+    const post = requests.find((r) => r.url.endsWith('/post'));
+    ok(post?.method === 'POST' && post.body?.length === 1, 'http: тіло без method — POST, обрізане на \\0');
+    const put = requests.find((r) => r.url.endsWith('/put'));
+    ok(put?.method === 'PUT' && put.body === null, 'http: нерядкове body ігнорується, як у прошивці');
+    ok(lines[4] === '200.0\tnil', `http: з file відповідь не повертається: "${lines[4]}"`);
+    ok(saved !== null && saved.length === 4 && saved[2] === 0, 'http: file пише всі байти, разом із \\0');
+    ok(lines[5] === 'Не вдалося відкрити data.bin', `http: відносний шлях fopen не відкриє: "${lines[5]}"`);
+    ok(lines[6] === 'Не вдалося відкрити /sd/nodir/x.bin', `http: fopen не створює тек: "${lines[6]}"`);
+    ok(
+        lines[7] === 'Очікується 1 аргумент, отримано 0\tАргумент має бути таблицею',
+        `http: перевірка аргументів: "${lines[7]}"`,
+    );
+    ok(lines[8] === '-1.0', `http: без url — CONNECTION_REFUSED: "${lines[8]}"`);
+}
+
+// wifi — імітація з однією віртуальною точкою доступу. Скрипти перевіряють
+// get_status() == 3 перед http.execute, тож саме цей шлях і важливий
+{
+    let requests = 0;
+    const memory = createSharedMemory(W, H);
+    const output: string[] = [];
+    const runtime = new LuaRuntime({
+        memory,
+        fonts,
+        statusBarHeight: profile.canvas.statusBarHeight,
+        defaultFont: board.defaultFont,
+        onPrint: (t) => output.push(t),
+        httpTransport: () => {
+            requests++;
+            return { kind: 'response', status: 200, body: new Uint8Array([0x6f, 0x6b]) };
+        },
+    });
+    await runtime.prepare();
+    const result = runtime.run(`
+        print(wifi.get_status(), wifi.get_local_ip(), wifi.get_mac())
+        local nets = wifi.scan()
+        print(#nets, nets[1], wifi.get_rssi(1), wifi.get_encryption_type(1), wifi.get_rssi(2), wifi.get_encryption_type(9))
+        print(http.execute({ url = "https://example.com/" }).response)
+        wifi.disconnect()
+        print(wifi.get_status(), wifi.get_local_ip(), http.execute({ url = "https://example.com/" }).code)
+        wifi.connect("ssid", "pass")
+        print(wifi.get_status())
+        print(select(2, pcall(wifi.connect, "ssid")), select(2, pcall(wifi.get_rssi)), select(2, pcall(wifi.set_config, "1")))
+    `);
+    runtime.close();
+    const lines = output.filter((line) => !line.startsWith('⚠'));
+    ok(result.reason === 'no-loop', `wifi: скрипт мав завершитися без помилки: ${result.message ?? result.reason}`);
+    ok(lines[0] === '3\t192.168.4.2\t24:0A:C4:4C:69:6C', `wifi: на старті вже під'єднано, коди цілі: "${lines[0]}"`);
+    ok(lines[1] === '1\tLilka-Emulator\t-50\t3\t0\t0', `wifi: scan, rssi, тип шифрування, чужий індекс = 0: "${lines[1]}"`);
+    ok(lines[2] === 'ok', `wifi: http працює, поки є з'єднання: "${lines[2]}"`);
+    ok(lines[3] === '6\t0.0.0.0\t-1.0', `wifi: після disconnect статус 6 і http дає -1: "${lines[3]}"`);
+    ok(requests === 1, `wifi: без з'єднання запит не йде в мережу (запитів: ${requests})`);
+    ok(lines[4] === '3', `wifi: connect повертає з'єднання: "${lines[4]}"`);
+    ok(
+        lines[5] ===
+            'Очікується 2 аргументи, отримано 1\tОчікується 1 аргумент, отримано 0\tОчікується 5 аргументів, отримано 1',
+        `wifi: перевірка кількості аргументів: "${lines[5]}"`,
+    );
 }
 
 console.log(fails === 0 ? '✔ рантайм: усі перевірки пройдено' : `✖ рантайм: ${fails} перевірок не пройдено`);

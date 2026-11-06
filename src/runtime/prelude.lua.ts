@@ -333,6 +333,64 @@ crypto = {
     end, 2, "CRYPTO_ARGS_2_FMT"),
 }
 
+--[[
+    http — порт lualilka_http_execute (keira, lualilka_http.cpp).
+
+    Таблиця розбирається тут, а не в JS, бо правила розбору — суто Lua:
+    прошивка бере значення лише тоді, коли lua_type(...) == LUA_TSTRING,
+    тож body = 123 мовчки ігнорується, а не перетворюється на "123".
+
+    Код результату — float: прошивка пушить його через lua_pushnumber, а не
+    lua_pushinteger, тож print(result.code) на Лілці дає "200.0". Так само
+    й HTTP_CODE_OK.
+--]]
+local function httpExecute(options)
+    if type(options) ~= "table" then error(S.HTTP_ARG_MUST_BE_TABLE, 3) end
+    local url, method, body, file
+    for key, value in pairs(options) do
+        if type(key) == "string" and type(value) == "string" then
+            if key == "url" then url = value
+            elseif key == "method" then method = value
+            elseif key == "body" then body = value
+            elseif key == "file" then file = value
+            end
+        end
+    end
+    if method == nil then method = body == nil and "GET" or "POST" end
+
+    -- String(body) у прошивці — C-рядок, тож тіло закінчується на першому \0
+    local payload
+    if body ~= nil then
+        local cut = body:find("\0", 1, true)
+        payload = stringToBytes(cut and body:sub(1, cut - 1) or body)
+    end
+
+    local raw = api.http.__execute(url, method, payload, file)
+    if raw.file_error then error(stock_format(S.HTTP_CANT_OPEN_FILE_FMT, file), 3) end
+    local result = { code = raw.code + 0.0 }
+    if raw.has_response then result.response = bytesToString(raw.response) end
+    return result
+end
+
+-- wifi — перевірка кількості аргументів як у lualilka_wifi.cpp; решта
+-- функцій прошивки аргументів не рахує взагалі
+wifi = {
+    connect = checked("connect", "", api.wifi.connect, 2, "WIFI_ARGS_2_FMT"),
+    disconnect = api.wifi.disconnect,
+    get_status = api.wifi.get_status,
+    scan = api.wifi.scan,
+    get_rssi = checked("get_rssi", "", api.wifi.get_rssi, 1, "WIFI_ARGS_1_FMT"),
+    get_encryption_type = checked("get_encryption_type", "", api.wifi.get_encryption_type, 1, "WIFI_ARGS_1_FMT"),
+    get_mac = api.wifi.get_mac,
+    get_local_ip = api.wifi.get_local_ip,
+    set_config = checked("set_config", "", api.wifi.set_config, 5, "WIFI_ARGS_5_FMT"),
+}
+
+http = {
+    execute = checked("execute", "", httpExecute, 1, "HTTP_ARGS_1_FMT"),
+    HTTP_CODE_OK = 200.0,
+}
+
 -- Файловий об'єкт sdcard.open() і fs.open(). У Lua немає close(): файл
 -- закривається складальником сміття через __gc. У mJS close() є — це
 -- розбіжність мов.

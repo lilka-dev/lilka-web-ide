@@ -18,6 +18,7 @@
     "render:testcard": "node --experimental-strip-types scripts/render-testcard.mts",
     "gen:fmath": "node scripts/gen-fmath.mjs",
     "check:images": "node --experimental-strip-types scripts/check-images.mts",
+    "proxy": "node public/lilka-proxy.mjs",
     "check:runtime": "node --experimental-strip-types scripts/check-runtime.mts",
     "gen:coverage": "node --experimental-strip-types scripts/gen-coverage.mts",
     "gen:notes": "node scripts/gen-notes.mjs",

@@ -26,6 +26,8 @@ import { exampleAssets } from './examples/index.ts';
 import { LilkaDevice, isSerialSupported } from './device/serial.ts';
 import { createConsolePanel } from './ui/console.ts';
 import { createErrorBar } from './ui/error-bar.ts';
+import { createNetworkBar } from './ui/network-bar.ts';
+import { createProxyStore, openNetworkDialog } from './ui/proxy.ts';
 import { createFilesPanel, ROOT, type FileEntry } from './ui/files.ts';
 import { basename, dirname } from './emulator/vfs.ts';
 import { LuaHost } from './runtime/host.ts';
@@ -70,7 +72,21 @@ sideHead.append(sideTitle, editor.langToggle);
 sideColumn.append(sideHead);
 
 const errorBar = createErrorBar((line) => editor.goToLine(line));
-deviceColumn.append(errorBar.root, editor.consoleRoot);
+// host створюється нижче; сховище звертається до нього лише після кліку
+const proxyStore = createProxyStore({
+    get httpProxy() {
+        return host.httpProxy;
+    },
+    set httpProxy(value) {
+        host.httpProxy = value;
+    },
+});
+const networkBar = createNetworkBar(proxyStore);
+proxyStore.onChange(() => editor.setProxy(proxyStore.get()));
+editor.onNetwork(() => openNetworkDialog(proxyStore));
+/** Пояснення про заблокований запит — раз на запуск: скрипт може повторювати запит щокадру. */
+let networkExplained = false;
+deviceColumn.append(errorBar.root, networkBar.root, editor.consoleRoot);
 
 const hud = document.createElement('div');
 hud.className = 'hud';
@@ -222,6 +238,12 @@ const host = new LuaHost(board, DEFAULT_FONT, {
     },
     onFilesChange: () => refreshFiles(),
     onStateChange: drawHostState,
+    onNetworkBlocked: (url, viaProxy) => {
+        if (networkExplained) return;
+        networkExplained = true;
+        editor.print(t('network.console', { url }), 'err');
+        networkBar.show(url, viaProxy);
+    },
 });
 
 /**
@@ -386,6 +408,8 @@ editor.onExport(() => {
 async function runEditorCode(): Promise<void> {
     editor.clearConsole();
     errorBar.clear();
+    networkBar.clear();
+    networkExplained = false;
     // Записати негайно: автозбереження має затримку, і без цього воркер міг
     // би отримати попередню версію коду
     editor.flush();

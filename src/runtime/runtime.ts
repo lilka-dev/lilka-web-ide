@@ -19,6 +19,7 @@ import { CTRL, type SharedMemory } from './shared.ts';
 import { LilkaDevice } from './device.ts';
 import { createBindings, LuaExit, type BindingHooks } from './bindings.ts';
 import { PRELUDE } from './prelude.lua.ts';
+import type { HttpTransport } from './http.ts';
 
 export interface RuntimeOptions {
     memory: SharedMemory;
@@ -33,6 +34,10 @@ export interface RuntimeOptions {
     onFileWrite?: (path: string, data: Uint8Array) => void;
     /** Звук іде назовні: у воркері WebAudio немає. Необов'язковий — під Node звуку просто не буде. */
     onSound?: BindingHooks['sound'];
+    /** Мережа для `http.execute`. Немає — запити завершуються кодом -1, як на Лілці без WiFi. */
+    httpTransport?: HttpTransport;
+    /** Запит http.execute не дістався сервера — інтерфейс пояснить чому. */
+    onNetworkBlocked?: (url: string) => void;
 }
 
 export interface RunResult {
@@ -73,6 +78,19 @@ export class LuaRuntime {
             sleepMs: (ms) => this.sleep(ms),
             running: () => Atomics.load(control, CTRL.RUNNING) === 1,
             sound: (event) => this.options.onSound?.(event),
+            networkBlocked: (url) => this.options.onNetworkBlocked?.(url),
+            http: (request) => {
+                const transport = this.options.httpTransport;
+                if (!transport) return { kind: 'network-error' };
+                // Поки запит іде, кадрів немає — сторож має це знати
+                Atomics.store(control, CTRL.NETWORK, 1);
+                try {
+                    return transport(request);
+                } finally {
+                    Atomics.store(control, CTRL.NETWORK, 0);
+                    Atomics.store(control, CTRL.HEARTBEAT, Date.now() - this.startedAt);
+                }
+            },
         });
         this.device.onFileWrite = (path, data) => this.options.onFileWrite?.(path, data);
         this.coverage = {

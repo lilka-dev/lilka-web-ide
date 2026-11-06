@@ -41,6 +41,10 @@ export interface EditorPanel {
     goToLine(line: number): void;
     /** Натиснуто «Експорт» — програму треба віддати архівом. */
     onExport(handler: () => void): void;
+    /** Натиснуто «Мережа» — налаштування проксі для http.execute. */
+    onNetwork(handler: () => void): void;
+    /** Позначка на кнопці «Мережа»: проксі ввімкнено чи ні. */
+    setProxy(proxy: string | null): void;
     /** Вибрано приклад — можливо, із супутніми файлами. */
     onExample(handler: (example: (typeof EXAMPLES)[number]) => void): void;
 }
@@ -153,6 +157,30 @@ export function createEditor(initialCode: string): EditorPanel {
     exportButton.append(exportLabel);
     bindTitle(exportButton, 'editor.exportTitle');
 
+    /*
+     * «Мережа» — проксі для http.execute. Окрема кнопка, а не лише смуга
+     * після невдалого запиту: проксі зручно ввімкнути заздалегідь і бачити,
+     * чи він увімкнений зараз.
+     */
+    const networkButton = document.createElement('button');
+    networkButton.type = 'button';
+    networkButton.className = 'button editor__tool editor__network';
+    networkButton.append(iconElement('globe', 15));
+    const networkLabel = document.createElement('span');
+    bindText(networkLabel, 'editor.network');
+    const networkDot = document.createElement('span');
+    networkDot.className = 'editor__network-dot';
+    networkDot.hidden = true;
+    networkButton.append(networkLabel, networkDot);
+    let proxyShown: string | null = null;
+    const drawNetworkTitle = () => {
+        networkButton.title = proxyShown
+            ? t('editor.networkTitleOn', { proxy: proxyShown })
+            : t('editor.networkTitle');
+    };
+    drawNetworkTitle();
+    onLangChange(drawNetworkTitle);
+
     const status = document.createElement('span');
     status.className = 'editor__status';
 
@@ -200,7 +228,7 @@ export function createEditor(initialCode: string): EditorPanel {
     langToggle.append(enButton, ukButton);
 
     // Підключення ліворуч, запуск праворуч — на краю, де закінчується рядок
-    bar.append(deviceSlot, deviceRunButton, picker, exportButton, status, runButton);
+    bar.append(deviceSlot, deviceRunButton, picker, exportButton, networkButton, status, runButton);
 
     /*
      * Рядок із назвою файлу.
@@ -325,6 +353,13 @@ export function createEditor(initialCode: string): EditorPanel {
         goToLine: (line) => code?.goToLine(line),
         onRun: (handler) => runHandlers.push(handler),
         onExport: (handler) => exportButton.addEventListener('click', handler),
+        onNetwork: (handler) => networkButton.addEventListener('click', handler),
+        setProxy(proxy) {
+            proxyShown = proxy;
+            networkDot.hidden = proxy === null;
+            networkButton.classList.toggle('editor__network--on', proxy !== null);
+            drawNetworkTitle();
+        },
         onStop: (handler) => stopHandlers.push(handler),
         onExample: (handler: (example: (typeof EXAMPLES)[number]) => void) => {
             exampleHandler = handler;

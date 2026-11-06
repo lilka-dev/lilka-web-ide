@@ -124,6 +124,11 @@ depend on anything inside Lua, so a script can't disable it. This layer
 deliberately doesn't rely on `debug.sethook`: if a hole ever turns up in the
 instruction counter, a hung program still won't freeze the page forever.
 
+The one exception is a synchronous `http.execute`: while it runs, the worker
+raises `CTRL.NETWORK`, and the watchdog doesn't count that time. There are no
+frames during a request on hardware either; the request is bounded by its own
+timeout instead (see "Network").
+
 ---
 
 ## Three layers and the boundary between them
@@ -329,6 +334,76 @@ This isn't our quirk — it's firmware behavior:
 Because of the second rule, `sdcard.open("a.txt")` looks for `/sda.txt` and
 finds nothing. We reproduce that, but add a hint in the environment's
 console — there's no console on hardware, so the explanation breaks nothing.
+
+---
+
+## Network: `http.execute`
+
+On hardware `http.execute` blocks the Lua task until the response arrives
+(`HTTPClient::sendRequest`), and scripts rely on that. The only synchronous
+request a browser still allows is `XMLHttpRequest` with `async = false`
+**inside a worker** — another thing the worker gives us for free.
+
+The transport (`src/runtime/http.ts`) is handed to the runtime from outside:
+the worker passes the XHR one, `check-runtime` passes a fake. Without a
+transport, every request ends with `-1`, just like a Lilka without WiFi.
+
+Reproduced from `lualilka_http_execute`:
+
+- `code` and `HTTP_CODE_OK` are **floats** (`lua_pushnumber`), so
+  `print(r.code)` shows `200.0`;
+- only string values are read from the table — `body = 123` is silently
+  ignored; no `method` means `GET`, or `POST` when there's a body;
+- the request body and the response string end at the first `\0`
+  (`String(body)`, `lua_pushstring(c_str())`); a `file` gets every byte;
+- the body is read only on `200`; any other code has no `response`;
+- `file` goes to `fopen` as is: a relative path, the root, or a missing
+  folder fails with `HTTP_CANT_OPEN_FILE_FMT`;
+- a failed connection is `-1` (`HTTPC_ERROR_CONNECTION_REFUSED`), a timeout
+  `-11` (`HTTPC_ERROR_READ_TIMEOUT`).
+
+### `wifi`: a mock with one virtual access point
+
+Scripts check `wifi.get_status() == 3` before `http.execute`, so without
+`wifi` they never even try. There's no radio in a browser, so the mock
+reproduces what a script sees: KeiraOS joins the network on its own before
+the program starts, so the status is `WL_CONNECTED` (3) right away while the
+browser is online. `scan` finds one network, `Lilka-Emulator`; an index
+outside the list gives `0`, as `WiFi.RSSI`/`encryptionType` do.
+`wifi.disconnect()` turns status into `WL_DISCONNECTED` (6), and
+`http.execute` then returns `-1` without touching the network. Divergence:
+`WiFi.begin` is asynchronous on hardware and the status takes seconds to
+become 3; here `connect` is instant.
+
+What can't match, because it's the browser's rules, not ours:
+
+- **CORS and mixed content.** The browser only lets a page read responses
+  from servers that allow it, and blocks `http://` from an `https://` page.
+  Lilka has neither restriction. Such a request ends with `-1`. The runtime
+  doesn't print anything itself — that would change the script's output —
+  but reports `network-blocked` to the host, and the interface shows the
+  "Network request blocked" bar under the device (`src/ui/network-bar.ts`),
+  once per run. The same proxy settings (`src/ui/proxy.ts`) are always
+  reachable from the **Network** button in the toolbar, so the proxy can be
+  turned on, checked or off before any request fails.
+
+  The way around it is the local proxy `public/lilka-proxy.mjs` (instructions
+  in the README). It lives in `public/` so the deployed site serves it for
+  download. With a proxy set, the worker sends every request as
+  `<proxy>/proxy?url=…`; the proxy's own failure (target unreachable) is
+  marked with `X-Lilka-Proxy-Error` and becomes `-1`, not a `502`. The proxy
+  doesn't follow redirects and strips `Location`, so the script sees `3xx` —
+  closer to hardware than a direct request. The proxy address goes to the
+  worker with the run command: a running worker sleeps in `Atomics.wait` and
+  doesn't read messages.
+- **Redirects** are followed by the browser; `HTTPClient` doesn't follow them
+  by default and would return the `3xx` code.
+- **User-Agent** stays the browser's, not `Lilka/<version>`.
+- **Timeout** is 5 s (`HTTPCLIENT_DEFAULT_TCP_TIMEOUT`) for the whole
+  request, while on hardware it's per socket operation.
+- **`file` on a slow connection**: the firmware copies the stream with
+  `while (connected() && available())` and may stop early; here the file is
+  always complete.
 
 ---
 
@@ -572,13 +647,14 @@ that's a bug in the emulator, not in the example.
 ## API coverage
 
 ```
-111 of 174 functions (64%)
-within scope: 107 of 108 (99%)
+132 of 181 functions (73%)
+within scope: 132 of 133 (99%)
 ```
 
-The gap between 174 and 108 is hardware namespaces that will never exist in a
-browser: `gpio`, `i2c`, `spi`, `pwm`, `wifi`, `mqtt`, `net`, `serial`,
-`ws2812`.
+The gap between 181 and 133 is hardware namespaces that will never exist in a
+browser: `gpio`, `i2c`, `spi`, `pwm`, `httpserver`, `mqtt`, `net`, `serial`,
+`ws2812`. `http` and `wifi` are not among them: a client request works
+through a synchronous XHR, and `wifi` is a mock (see "Network").
 
 The number isn't a guess: `gen-coverage.mts` runs the real runtime, captures
 the list of bindings, and checks it against the spec extracted from the

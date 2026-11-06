@@ -87,6 +87,7 @@ npm run check:vfs        # file system
 npm run check:completions # autocompletion
 npm run check:widgets    # UI widgets
 npm run check:runtime    # Lua runtime
+npm run proxy            # local CORS proxy for http.execute (see above)
 npm run gen:api          # regenerate lilka-api.json from keira
 npm run gen:fonts        # regenerate fonts (pulls ~40 MB of source, cached)
 npm run gen:fmath        # sine tables
@@ -101,6 +102,51 @@ Scripts ending in `.mts` run via `node --experimental-strip-types`, so
 **Node 22+** is required.
 
 </details>
+
+## Network requests and the local proxy
+
+`http.execute` works in the browser, but the browser adds two rules a real
+Lilka doesn't have:
+
+- a page may only read responses from servers that allow it with a CORS
+  header (`Access-Control-Allow-Origin`);
+- a page opened over `https://` can't request `http://` addresses.
+
+Many APIs scripts use — Yahoo Finance, for example — don't send that header,
+so the request ends with code `-1`, and a "Network request blocked" bar
+appears under the device. The way around it is a small proxy on your own
+computer: it makes the request itself and hands the answer back to the IDE.
+
+1. Install [Node.js](https://nodejs.org/) 18 or newer.
+2. Download [`lilka-proxy.mjs`](public/lilka-proxy.mjs) — or take it from the
+   bar's "How to start the proxy" link. It has no dependencies.
+3. Run it in a terminal from the download folder:
+
+   ```bash
+   node lilka-proxy.mjs
+   ```
+
+   From a clone of this repository: `npm run proxy`.
+4. In the IDE, open **Network** in the toolbar (or use the bar under the
+   device), enter `http://localhost:8787`, press "Check", then "Use", and run
+   the program. A green dot on the Network button means the proxy is on.
+5. If the browser asks to allow access to devices on the local network, allow
+   it: from the browser's point of view the IDE is a site on the internet
+   talking to your computer.
+
+The setting lives in memory only, so after a page reload it has to be entered
+again.
+
+What the proxy does, and doesn't:
+
+- It listens on `127.0.0.1` only — other computers can't reach it.
+- It answers only the IDE's own sites and `localhost`. If the IDE is served
+  from somewhere else (a fork), add it: `node lilka-proxy.mjs --origin
+  https://you.github.io`. Otherwise any open tab could use the proxy to reach
+  your local network.
+- It signs requests `Lilka/…`, like the firmware, and doesn't follow
+  redirects, like the firmware's `HTTPClient` — the script sees the `3xx` code.
+- `--port 9000` changes the port.
 
 ## Deployment
 

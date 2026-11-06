@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-10-09T10:46:09.333Z",
+  "generatedAt": "2026-11-06T13:57:40.734Z",
   "totals": {
     "functions": 181,
-    "implemented": 122,
+    "implemented": 132,
     "stubs": 1,
-    "inScopeFunctions": 123,
-    "inScopeImplemented": 122
+    "inScopeFunctions": 133,
+    "inScopeImplemented": 132
   },
   "namespaces": [
     {
@@ -68,6 +68,13 @@
       "name": "geometry",
       "total": 2,
       "done": 2,
+      "stub": 0,
+      "missing": []
+    },
+    {
+      "name": "http",
+      "total": 1,
+      "done": 1,
       "stub": 0,
       "missing": []
     },
@@ -135,6 +142,13 @@
       "missing": []
     },
     {
+      "name": "wifi",
+      "total": 9,
+      "done": 9,
+      "stub": 0,
+      "missing": []
+    },
+    {
       "name": "audio",
       "total": 7,
       "done": 6,
@@ -153,16 +167,6 @@
         "write"
       ],
       "note": "фізичні виводи"
-    },
-    {
-      "name": "http",
-      "total": 1,
-      "done": 0,
-      "stub": 0,
-      "missing": [
-        "execute"
-      ],
-      "note": "мережа пристрою"
     },
     {
       "name": "httpserver",
@@ -269,24 +273,6 @@
         "transfer"
       ],
       "note": "фізична шина"
-    },
-    {
-      "name": "wifi",
-      "total": 9,
-      "done": 0,
-      "stub": 0,
-      "missing": [
-        "connect",
-        "disconnect",
-        "get_encryption_type",
-        "get_local_ip",
-        "get_mac",
-        "get_rssi",
-        "get_status",
-        "scan",
-        "set_config"
-      ],
-      "note": "мережа пристрою"
     },
     {
       "name": "ws2812",
