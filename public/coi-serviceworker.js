@@ -27,6 +27,16 @@ if (typeof window === 'undefined') {
             return;
         }
 
+        // Зміна середовища Лілки (не з первотвору coi-serviceworker): CORS-запити
+        // до інших адрес не перехоплюються. Заголовки COOP/COEP їм не потрібні —
+        // CORS-відповідь дозволена й під require-corp. А запит, повторений із
+        // service worker, Chrome не може супроводити запитом дозволу Local
+        // Network Access, тож доступ до localhost (локального проксі для
+        // http.execute) мовчки відхилявся б на розгорнутому сайті.
+        if (r.mode === "cors" && new URL(r.url).origin !== self.location.origin) {
+            return;
+        }
+
         const request = (coepCredentialless && r.mode === "no-cors")
             ? new Request(r, {
                 credentials: "omit",

@@ -396,6 +396,16 @@ What can't match, because it's the browser's rules, not ours:
   closer to hardware than a direct request. The proxy address goes to the
   worker with the run command: a running worker sleeps in `Atomics.wait` and
   doesn't read messages.
+
+  On the deployed site there is one more gate: Chrome's **Local Network
+  Access**. A site from the internet may reach `localhost` only after the
+  person allows it; under the local dev server the rule doesn't apply, which
+  is why it never shows up in development. Chrome can ask only for a request
+  made by the page itself — not one replayed by a service worker. So
+  `coi-serviceworker.js` carries one local change: it doesn't intercept
+  cross-origin `cors` requests (they don't need COOP/COEP headers anyway).
+  "Use" checks the proxy right away from the page, so the permission prompt
+  follows the person's click, and the Lua worker's requests then go through.
 - **Redirects** are followed by the browser; `HTTPClient` doesn't follow them
   by default and would return the `3xx` code.
 - **User-Agent** stays the browser's, not `Lilka/<version>`.

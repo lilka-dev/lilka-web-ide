@@ -53,20 +53,51 @@ export function proxyCommand(): string {
 }
 
 /**
- * Чи відповідає проксі цьому сайту. Запит іде з головного потоку, бо це
- * перевірка для людини, а не частина програми Lua.
+ * Стан дозволу Chrome на доступ до цього комп'ютера (Local Network Access).
+ *
+ * Сайт з інтернету може звернутися до `localhost` лише з дозволу людини; без
+ * нього запит відхиляється так само, як до вимкненого проксі. Назва дозволу
+ * змінювалася між версіями Chrome, тож питаємо всі відомі; браузер, що не знає
+ * жодної, такого обмеження й не має.
  */
-async function checkProxy(proxy: string): Promise<'ok' | 'refused' | 'down'> {
+async function localNetworkPermission(): Promise<PermissionState | 'unknown'> {
+    const states: PermissionState[] = [];
+    for (const name of ['local-network-access', 'loopback-network', 'local-network']) {
+        try {
+            states.push((await navigator.permissions.query({ name: name as PermissionName })).state);
+        } catch {
+            // Невідома назва в цій версії браузера
+        }
+    }
+    if (states.includes('denied')) return 'denied';
+    if (states.includes('prompt')) return 'prompt';
+    return states.length ? 'granted' : 'unknown';
+}
+
+/**
+ * Чи відповідає проксі цьому сайту. Запит іде з головного потоку, а не з
+ * воркера Lua: лише зі сторінки Chrome може спитати дозволу на доступ до
+ * localhost, і краще, щоб це сталося одразу після кліку людини.
+ */
+async function checkProxy(proxy: string): Promise<'ok' | 'refused' | 'blocked' | 'down'> {
     try {
-        const response = await fetch(`${proxy}/`, { signal: AbortSignal.timeout(3000), cache: 'no-store' });
+        const response = await fetch(`${proxy}/`, { signal: AbortSignal.timeout(15000), cache: 'no-store' });
         if (response.ok) return 'ok';
         return response.status === 403 ? 'refused' : 'down';
     } catch {
-        return 'down';
+        return (await localNetworkPermission()) === 'denied' ? 'blocked' : 'down';
     }
 }
 
-type StateKey = 'on' | 'off' | 'invalid' | 'checking' | 'check-ok' | 'check-refused' | 'check-down';
+type StateKey =
+    | 'on'
+    | 'off'
+    | 'invalid'
+    | 'checking'
+    | 'check-ok'
+    | 'check-refused'
+    | 'check-blocked'
+    | 'check-down';
 
 export interface ProxySettings {
     root: HTMLElement;
@@ -171,8 +202,14 @@ export function createProxySettings(store: ProxyStore, idPrefix: string): ProxyS
         else if (stateKey === 'check-ok') state.textContent = t('network.checkOk', { proxy: checked });
         else if (stateKey === 'check-refused')
             state.textContent = t('network.checkRefused', { proxy: checked, command: proxyCommand() });
+        else if (stateKey === 'check-blocked') state.textContent = t('network.checkBlocked');
         else if (stateKey === 'check-down') state.textContent = t('network.checkDown', { proxy: checked });
-        if (stateKey === 'invalid' || stateKey === 'check-refused' || stateKey === 'check-down') {
+        if (
+            stateKey === 'invalid' ||
+            stateKey === 'check-refused' ||
+            stateKey === 'check-blocked' ||
+            stateKey === 'check-down'
+        ) {
             state.classList.add('proxy__state--bad');
         } else if (stateKey === 'check-ok') {
             state.classList.add('proxy__state--good');
@@ -194,33 +231,48 @@ export function createProxySettings(store: ProxyStore, idPrefix: string): ProxyS
         }
     }
 
-    form.addEventListener('submit', (event) => {
-        event.preventDefault();
-        const proxy = readInput();
-        stateKey = proxy ? 'on' : 'invalid';
-        if (proxy) {
-            input.value = proxy;
-            store.set(proxy);
-        }
-        draw();
-    });
-
-    check.addEventListener('click', async () => {
-        const proxy = readInput();
-        if (!proxy) {
-            stateKey = 'invalid';
-            draw();
-            return;
-        }
+    /**
+     * Перевірка проксі. Після «Увімкнути» вона йде сама: саме цей запит зі
+     * сторінки і викликає питання Chrome про дозвіл, а без дозволу запити
+     * програми з воркера мовчки відхилялися б.
+     */
+    async function runCheck(proxy: string, savedFirst: boolean): Promise<void> {
         checked = proxy;
         stateKey = 'checking';
         draw();
         const result = await checkProxy(proxy);
         // Людина могла тим часом натиснути щось інше — тоді результат уже не про те
         if (stateKey !== 'checking' || checked !== proxy) return;
-        stateKey = result === 'ok' ? 'check-ok' : result === 'refused' ? 'check-refused' : 'check-down';
-        if (result !== 'ok') howTo.open = true;
+        if (result === 'ok') {
+            stateKey = savedFirst ? 'on' : 'check-ok';
+        } else {
+            stateKey = result === 'refused' ? 'check-refused' : result === 'blocked' ? 'check-blocked' : 'check-down';
+            howTo.open = true;
+        }
         draw();
+    }
+
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const proxy = readInput();
+        if (!proxy) {
+            stateKey = 'invalid';
+            draw();
+            return;
+        }
+        input.value = proxy;
+        store.set(proxy);
+        void runCheck(proxy, true);
+    });
+
+    check.addEventListener('click', () => {
+        const proxy = readInput();
+        if (!proxy) {
+            stateKey = 'invalid';
+            draw();
+            return;
+        }
+        void runCheck(proxy, false);
     });
 
     off.addEventListener('click', () => {

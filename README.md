@@ -130,9 +130,12 @@ computer: it makes the request itself and hands the answer back to the IDE.
 4. In the IDE, open **Network** in the toolbar (or use the bar under the
    device), enter `http://localhost:8787`, press "Check", then "Use", and run
    the program. A green dot on the Network button means the proxy is on.
-5. If the browser asks to allow access to devices on the local network, allow
-   it: from the browser's point of view the IDE is a site on the internet
-   talking to your computer.
+5. When Chrome asks to let the site access apps or devices on this computer,
+   allow it: from the browser's point of view the IDE is a site on the
+   internet talking to your computer (Local Network Access). Without that
+   permission the proxy looks unreachable even though it runs. If you
+   dismissed the prompt, allow it by hand: the icon left of the address →
+   Site settings → **Local network access** → Allow, then reload.
 
 The setting lives in memory only, so after a page reload it has to be entered
 again.

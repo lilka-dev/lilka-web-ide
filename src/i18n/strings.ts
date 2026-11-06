@@ -189,12 +189,12 @@ const en = {
     'network.blocked':
         'The browser did not let the program reach {url}. Most likely the server does not allow requests from web pages (CORS), or the address is http:// while this page is https://. A real Lilka has neither restriction, so the same script may work there. A local proxy works around it.',
     'network.proxyFailed':
-        'The request to {url} went through the proxy {proxy} and failed. Is the proxy running? Its terminal shows the reason.',
+        'The request to {url} went through the proxy {proxy} and failed. Is the proxy running, and has the browser allowed this site to reach it? Press “Check” below.',
     'network.console': '⚠ http.execute: the browser blocked the request to {url} — see the bar under the device.',
     'network.proxyLabel': 'Local proxy',
     'network.proxyUse': 'Use',
     'network.proxyOff': 'Turn off',
-    'network.proxyOn': 'Saved. It takes effect the next time the program runs.',
+    'network.proxyOn': 'The proxy responds. It takes effect the next time the program runs.',
     'network.proxyOffDone': 'Turned off. It takes effect the next time the program runs.',
     'network.proxyInvalid': 'Enter an address like {proxy}',
     'network.howTo': 'How to start the proxy',
@@ -202,7 +202,7 @@ const en = {
     'network.step2': 'Download the proxy script:',
     'network.step3': 'In a terminal, in the download folder, run:',
     'network.step4': 'Enter {proxy} above, press “Use” and run the program again.',
-    'network.step5': 'If the browser asks to allow access to devices on the local network, allow it.',
+    'network.step5': 'When the browser asks to allow this site access to apps or devices on this computer, allow it — otherwise the proxy can’t be reached.',
     'network.docs': 'More in the README',
     'network.dialogTitle': 'Network',
     'network.dialogIntro':
@@ -213,7 +213,10 @@ const en = {
     'network.checking': 'Checking…',
     'network.checkOk': 'The proxy at {proxy} responds.',
     'network.checkRefused': 'The proxy at {proxy} is running but does not accept this site. Restart it with: {command}',
-    'network.checkDown': 'No answer from {proxy}. Is the proxy running?',
+    'network.checkDown':
+        'No answer from {proxy}. Is the proxy running? If the browser asked to allow access to apps or devices on this computer, allow it.',
+    'network.checkBlocked':
+        'The browser does not let this site reach apps on this computer. Allow it: click the icon left of the address → Site settings → Local network access → Allow. Then press “Check” again.',
     'network.close': 'Close',
     'editor.network': 'Network',
     'editor.networkTitle': 'Network for http.execute: local proxy',
@@ -400,12 +403,12 @@ const uk: Record<Key, string> = {
     'network.blocked':
         'Браузер не пустив програму до {url}. Найімовірніше, сервер не дозволяє запитів із вебсторінок (CORS) або адреса http://, а ця сторінка https://. На справжній Лілці цих обмежень немає, тож там той самий скрипт може працювати. Обійти це можна локальним проксі.',
     'network.proxyFailed':
-        'Запит до {url} ішов через проксі {proxy} і не вдався. Проксі запущено? Причину видно в його терміналі.',
+        'Запит до {url} ішов через проксі {proxy} і не вдався. Проксі запущено, і браузер дозволив цьому сайту до нього звертатися? Натисніть «Перевірити» нижче.',
     'network.console': '⚠ http.execute: браузер заблокував запит до {url} — див. смугу під пристроєм.',
     'network.proxyLabel': 'Локальний проксі',
     'network.proxyUse': 'Увімкнути',
     'network.proxyOff': 'Вимкнути',
-    'network.proxyOn': 'Збережено. Подіє з наступного запуску програми.',
+    'network.proxyOn': 'Проксі відповідає. Подіє з наступного запуску програми.',
     'network.proxyOffDone': 'Вимкнено. Подіє з наступного запуску програми.',
     'network.proxyInvalid': 'Введіть адресу на кшталт {proxy}',
     'network.howTo': 'Як запустити проксі',
@@ -413,7 +416,7 @@ const uk: Record<Key, string> = {
     'network.step2': 'Завантажити скрипт проксі:',
     'network.step3': 'У терміналі, в теці із завантаженим файлом, виконати:',
     'network.step4': 'Вписати {proxy} вище, натиснути «Увімкнути» й запустити програму ще раз.',
-    'network.step5': 'Якщо браузер попросить дозволу на доступ до пристроїв локальної мережі — дозволити.',
+    'network.step5': 'Коли браузер попросить дозволити цьому сайту доступ до застосунків чи пристроїв на комп\'ютері — дозволити, інакше проксі недосяжний.',
     'network.docs': 'Докладніше в README',
     'network.dialogTitle': 'Мережа',
     'network.dialogIntro':
@@ -424,7 +427,10 @@ const uk: Record<Key, string> = {
     'network.checking': 'Перевірка…',
     'network.checkOk': 'Проксі за адресою {proxy} відповідає.',
     'network.checkRefused': 'Проксі за адресою {proxy} працює, але не приймає цей сайт. Перезапустіть його так: {command}',
-    'network.checkDown': '{proxy} не відповідає. Проксі запущено?',
+    'network.checkDown':
+        '{proxy} не відповідає. Проксі запущено? Якщо браузер питав дозволу на доступ до застосунків чи пристроїв на цьому комп\'ютері — дозвольте.',
+    'network.checkBlocked':
+        'Браузер не пускає цей сайт до застосунків на цьому комп\'ютері. Дозвольте: значок ліворуч від адреси → Налаштування сайту → Доступ до локальної мережі → Дозволити. Потім натисніть «Перевірити» ще раз.',
     'network.close': 'Закрити',
     'editor.network': 'Мережа',
     'editor.networkTitle': 'Мережа для http.execute: локальний проксі',
